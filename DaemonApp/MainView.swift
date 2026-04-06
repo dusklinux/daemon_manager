@@ -10,7 +10,7 @@ struct MainView: View {
             VStack(spacing: 0) {
                 VStack(spacing: 16) {
                     Text(model.ramUsageText)
-                        .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                        .font(.system(.subheadline, design: .monospaced, weight: .bold))
                         .foregroundColor(model.isDarkTheme ? .green : .blue)
 
                     HStack(spacing: 12) {
@@ -71,7 +71,7 @@ struct MainView: View {
                     }
                 }
             }
-            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.text]) { result in
+            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.plainText]) { result in
                 switch result {
                 case .success(let url):
                     let access = url.startAccessingSecurityScopedResource()
@@ -185,15 +185,12 @@ struct DaemonRow: View {
         )
     }
 
+    // iOS SDK Fix: Replaced exhaustive switch with native if-let unwrap
     private var statusColor: Color {
-        switch model.isDisabled(service) {
-        case true:
-            return .red
-        case false:
-            return .green
-        case nil:
-            return .gray
+        if let disabled = model.isDisabled(service) {
+            return disabled ? .red : .green
         }
+        return .gray
     }
 
     var body: some View {

@@ -128,7 +128,7 @@ final class AppModel: ObservableObject {
         return nil
     }
 
-    private func startRAMTimer() {
+    func startRAMTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.updateRAMUsage()
         }
@@ -195,12 +195,14 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 if failures.isEmpty {
                     self.disabledServices = merged
-                } else {
-                    self.disabledServices = nil
-                    self.errorMessage = failures.joined(separator: "\n\n")
                 }
 
                 self.isRefreshingState = false
+
+                if !failures.isEmpty {
+                    self.errorMessage = failures.joined(separator: "\n\n")
+                }
+
                 completion?()
             }
         }
@@ -405,14 +407,9 @@ final class AppModel: ObservableObject {
             return nil
         }
 
-        let plistObject: Any
-        do {
-            plistObject = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-        } catch {
-            return nil
-        }
-
-        guard let plist = plistObject as? [String: Any] else {
+        guard
+            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else {
             return nil
         }
 
@@ -453,7 +450,7 @@ final class AppModel: ObservableObject {
     }
 
     private func posixRun(executable: String, args: [String]) -> ProcessResult {
-        var argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
+        var argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in argv {
                 free(pointer)
@@ -464,14 +461,15 @@ final class AppModel: ObservableObject {
             "PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "LC_ALL=C"
         ]
-        var env: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
+        var env: [UnsafeMutablePointer<CChar>?] = environment.map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in env {
                 free(pointer)
             }
         }
 
-        var fileActions = posix_spawn_file_actions_t()
+        // iOS SDK Fix: Pointer initialized to nil to prevent 'init()' crash
+        var fileActions: posix_spawn_file_actions_t? = nil
         let initStatus = posix_spawn_file_actions_init(&fileActions)
         guard initStatus == 0 else {
             return ProcessResult(
