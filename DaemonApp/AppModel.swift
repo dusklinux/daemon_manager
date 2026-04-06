@@ -65,6 +65,9 @@ final class AppModel: ObservableObject {
 
     private let mobileDomain: String
     private let daemonManagerPath = "/var/jb/basebin/daemonmanager"
+    
+    // Rootless Jailbreak absolute shell path
+    private let rootlessShellPath = "/var/jb/bin/sh"
 
     init() {
         if let pw = getpwnam("mobile") {
@@ -178,7 +181,8 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
-                let result = self.posixRun(executable: "/bin/sh", args: ["-c", "launchctl print-disabled \(domain)"])
+                // FIX: Use the rootless shell path
+                let result = self.posixRun(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
 
                 guard result.exitCode == 0 else {
                     let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -273,8 +277,10 @@ final class AppModel: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async {
             let action = enable ? "enable" : "disable"
+            
+            // FIX: Use the rootless shell path
             let result = self.posixRun(
-                executable: "/bin/sh",
+                executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, action, service.label]
             )
 
