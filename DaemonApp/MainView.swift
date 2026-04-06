@@ -57,6 +57,7 @@ struct MainView: View {
                 }
 
                 TabView {
+                    // Config Tab inherently passes isolated config daemons
                     DaemonListView(
                         services: model.configDaemons,
                         emptyMessage: "No config loaded. Tap 'Import'."
@@ -65,6 +66,7 @@ struct MainView: View {
                         Label("Config", systemImage: "doc.text")
                     }
 
+                    // Services Tab inherently passes all system daemons
                     DaemonListView(
                         services: model.allDaemons,
                         emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
@@ -130,6 +132,18 @@ struct DaemonListView: View {
         case enabled = "Enabled"
         case disabled = "Disabled"
     }
+    
+    // NEW: Dynamically calculate counts based on the current isolated list
+    private func count(for type: FilterType) -> Int {
+        switch type {
+        case .all:
+            return services.count
+        case .enabled:
+            return services.filter { model.isDisabled($0) == false }.count
+        case .disabled:
+            return services.filter { model.isDisabled($0) == true }.count
+        }
+    }
 
     private var filteredServices: [LaunchdService] {
         var result = services
@@ -152,9 +166,32 @@ struct DaemonListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            
+            // NEW: Persistent custom search bar replacing hidden native searchable
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("Search labels...", text: $searchText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(10)
+            .background(Color(UIColor.tertiarySystemFill))
+            .cornerRadius(10)
+            .padding(.horizontal)
+            .padding(.top, 12)
+
+            // NEW: Segmented picker with dynamic counts appended to titles
             Picker("Filter", selection: $filter) {
                 ForEach(FilterType.allCases, id: \.self) { type in
-                    Text(type.rawValue).tag(type)
+                    Text("\(type.rawValue) (\(count(for: type)))").tag(type)
                 }
             }
             .pickerStyle(.segmented)
@@ -175,7 +212,6 @@ struct DaemonListView: View {
                     DaemonRow(service: service)
                 }
                 .listStyle(.plain)
-                .searchable(text: $searchText, prompt: "Search labels")
             }
         }
     }
@@ -205,7 +241,6 @@ struct DaemonRow: View {
         return .gray
     }
     
-    // Helper to determine real toggle state
     private var currentState: Bool? {
         guard let disabled = model.isDisabled(service) else { return nil }
         return !disabled
@@ -219,8 +254,6 @@ struct DaemonRow: View {
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    
-                    // NEW: UI Layout includes the Config Badge next to the label
                     HStack(spacing: 6) {
                         Text(service.label)
                             .font(.system(.callout, design: .monospaced))
