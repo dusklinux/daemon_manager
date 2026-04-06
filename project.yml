@@ -13,6 +13,7 @@ targets:
         excludes:
           - entitlements.plist
     info:
+      path: DaemonApp/Info.plist
       properties:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
