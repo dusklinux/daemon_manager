@@ -61,7 +61,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var rawConfigContent: String? = nil
 
     private var disabledServices: Set<DisabledServiceKey>?
-    private var ambiguousLabels: Set<String> = []
     private var importedLabels: [String] = []
     private var timer: Timer?
 
@@ -104,10 +103,10 @@ final class AppModel: ObservableObject {
         return disabledServices.contains(DisabledServiceKey(domain: domain, label: service.label))
     }
 
+    // FIX: Removed the ambiguousLabels lockout. You can now toggle anything.
     func canToggle(_ service: LaunchdService) -> Bool {
         daemonManagerAvailable &&
         service.domain != nil &&
-        !ambiguousLabels.contains(service.label) &&
         disabledServices != nil
     }
 
@@ -118,10 +117,6 @@ final class AppModel: ObservableObject {
 
         if service.domain == nil {
             return "This imported label could not be resolved to a scanned launchd plist."
-        }
-
-        if ambiguousLabels.contains(service.label) {
-            return "This label exists more than once in the scanned plist set, so label-only toggling is ambiguous."
         }
 
         if disabledServices == nil {
@@ -247,15 +242,9 @@ final class AppModel: ObservableObject {
             }
 
             let services = servicesByID.values.sorted(by: Self.sortServices)
-            let ambiguous = Set(
-                Dictionary(grouping: services, by: \.label)
-                    .filter { $0.value.count > 1 }
-                    .map(\.key)
-            )
 
             DispatchQueue.main.async {
                 self.allDaemons = services
-                self.ambiguousLabels = ambiguous
                 self.isScanningDaemons = false
                 self.resolveImportedConfig()
             }
@@ -302,22 +291,32 @@ final class AppModel: ObservableObject {
     }
 
     func importConfig(url: URL) {
-        do {
-            let data = try Data(contentsOf: url)
-            guard let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else {
-                presentError("Unsupported text encoding in imported config.")
-                return
+        var fileContent: String? = nil
+        
+        // FIX 1: TrollStore Unsandboxed POSIX bypass.
+        // We directly rip the file contents out using its absolute path to avoid Sandbox security-scope rejections.
+        if let data = FileManager.default.contents(atPath: url.path) {
+            fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
+        }
+        
+        // FIX 2: Standard Apple fallback just in case.
+        if fileContent == nil {
+            if let data = try? Data(contentsOf: url) {
+                fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
             }
+        }
 
-            let labels = parseImportedLabels(from: content)
+        guard let content = fileContent else {
+            presentError("Permission Denied: TrollStore apps cannot read sandboxed iCloud files. Please move 'daemon.cfg' directly to your 'On My iPhone > Downloads' folder and try again.")
+            return
+        }
 
-            DispatchQueue.main.async {
-                self.importedLabels = labels
-                self.rawConfigContent = content
-                self.resolveImportedConfig()
-            }
-        } catch {
-            presentError("Failed to import config: \(error.localizedDescription)")
+        let labels = parseImportedLabels(from: content)
+
+        DispatchQueue.main.async {
+            self.importedLabels = labels
+            self.rawConfigContent = content
+            self.resolveImportedConfig()
         }
     }
     
@@ -500,7 +499,6 @@ final class AppModel: ObservableObject {
     }
 
     private func posixRun(executable: String, args: [String]) -> ProcessResult {
-        // FIX: Changed var to let to satisfy Swift compilation warnings
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in argv {
@@ -512,8 +510,6 @@ final class AppModel: ObservableObject {
             "PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "LC_ALL=C"
         ]
-        
-        // FIX: Changed var to let to satisfy Swift compilation warnings
         let env: [UnsafeMutablePointer<CChar>?] = environment.map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in env {
