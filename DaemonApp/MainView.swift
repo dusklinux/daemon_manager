@@ -39,8 +39,17 @@ struct MainView: View {
                     }
 
                     if model.isScanningDaemons || model.isRefreshingState {
-                        ProgressView()
-                            .controlSize(.small)
+                        // NEW: Added dynamic progress text
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            
+                            if let progressText = model.applyProgressText {
+                                Text(progressText)
+                                    .font(.system(.caption, design: .monospaced, weight: .bold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                 }
                 .padding()
@@ -57,7 +66,6 @@ struct MainView: View {
                 }
 
                 TabView {
-                    // Config Tab inherently passes isolated config daemons
                     DaemonListView(
                         services: model.configDaemons,
                         emptyMessage: "No config loaded. Tap 'Import'."
@@ -66,7 +74,6 @@ struct MainView: View {
                         Label("Config", systemImage: "doc.text")
                     }
 
-                    // Services Tab inherently passes all system daemons
                     DaemonListView(
                         services: model.allDaemons,
                         emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
@@ -133,7 +140,6 @@ struct DaemonListView: View {
         case disabled = "Disabled"
     }
     
-    // NEW: Dynamically calculate counts based on the current isolated list
     private func count(for type: FilterType) -> Int {
         switch type {
         case .all:
@@ -167,7 +173,6 @@ struct DaemonListView: View {
     var body: some View {
         VStack(spacing: 0) {
             
-            // NEW: Persistent custom search bar replacing hidden native searchable
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -188,7 +193,6 @@ struct DaemonListView: View {
             .padding(.horizontal)
             .padding(.top, 12)
 
-            // NEW: Segmented picker with dynamic counts appended to titles
             Picker("Filter", selection: $filter) {
                 ForEach(FilterType.allCases, id: \.self) { type in
                     Text("\(type.rawValue) (\(count(for: type)))").tag(type)
@@ -254,6 +258,7 @@ struct DaemonRow: View {
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 4) {
+                    
                     HStack(spacing: 6) {
                         Text(service.label)
                             .font(.system(.callout, design: .monospaced))

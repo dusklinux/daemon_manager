@@ -59,17 +59,18 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     
     @Published private(set) var rawConfigContent: String? = nil
-    
-    // NEW: Tracks the intended state from the imported config (true = Should be ON)
     @Published private(set) var targetStates: [String: Bool] = [:]
+    @Published var applyProgressText: String? = nil
 
     private var disabledServices: Set<DisabledServiceKey>?
     private var importedLabels: [String] = []
     private var timer: Timer?
 
     private let mobileDomain: String
-    private let daemonManagerPath = "/var/jb/basebin/daemonmanager"
     private let rootlessShellPath = "/var/jb/bin/sh"
+    
+    // NEW: Path is now dynamic, not hardcoded
+    private let daemonManagerPath: String
 
     init() {
         if let pw = getpwnam("mobile") {
@@ -78,10 +79,28 @@ final class AppModel: ObservableObject {
             mobileDomain = "user/501"
         }
 
+        // --- NEW: SCRIPT PRECEDENCE RESOLUTION ---
+        let externalScript = "/var/jb/basebin/daemonmanager"
+        if FileManager.default.fileExists(atPath: externalScript) {
+            daemonManagerPath = externalScript // 1. Use external if present
+        } else if let bundledScript = Bundle.main.path(forResource: "daemonmanager", ofType: nil) {
+            daemonManagerPath = bundledScript // 2. Fallback to bundled
+        } else {
+            daemonManagerPath = externalScript // 3. Failsafe default
+        }
+
         validateEnvironment()
         startRAMTimer()
         fetchAllDaemons()
         refreshState()
+        
+        // --- NEW: CONFIG PRECEDENCE RESOLUTION ---
+        let externalConfig = "/var/jb/basebin/daemon.cfg"
+        if FileManager.default.fileExists(atPath: externalConfig) {
+            importConfig(url: URL(fileURLWithPath: externalConfig)) // 1. Auto-load external
+        } else if let bundledConfig = Bundle.main.url(forResource: "daemon", withExtension: "cfg") {
+            importConfig(url: bundledConfig) // 2. Auto-load bundled
+        }
     }
 
     deinit {
@@ -114,7 +133,7 @@ final class AppModel: ObservableObject {
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
         if !daemonManagerAvailable {
-            return "Missing executable dependency: \(daemonManagerPath)"
+            return "Missing script dependency at: \(daemonManagerPath)"
         }
 
         if service.domain == nil {
@@ -310,7 +329,6 @@ final class AppModel: ObservableObject {
             return
         }
 
-        // NEW: We now parse both the labels AND their intended state.
         let parsed = parseImportedConfig(from: content)
 
         DispatchQueue.main.async {
@@ -330,6 +348,7 @@ final class AppModel: ObservableObject {
 
         DispatchQueue.main.async {
             self.isRefreshingState = true
+            self.applyProgressText = "Preparing Config..."
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -338,14 +357,24 @@ final class AppModel: ObservableObject {
                 try content.write(to: tempURL, atomically: true, encoding: .utf8)
             } catch {
                 self.presentError("Failed to write temporary config file: \(error.localizedDescription)")
-                DispatchQueue.main.async { self.isRefreshingState = false }
+                DispatchQueue.main.async { 
+                    self.isRefreshingState = false 
+                    self.applyProgressText = nil
+                }
                 return
             }
 
             let result = self.posixRun(
                 executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, "apply-file", tempURL.path]
-            )
+            ) { [weak self] liveLine in
+                if let range = liveLine.range(of: #"\[[0-9]+/[0-9]+\]"#, options: .regularExpression) {
+                    let progressStr = String(liveLine[range])
+                    DispatchQueue.main.async {
+                        self?.applyProgressText = "Applying \(progressStr)"
+                    }
+                }
+            }
 
             try? FileManager.default.removeItem(at: tempURL)
 
@@ -358,23 +387,27 @@ final class AppModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = message
                     self.isRefreshingState = false
+                    self.applyProgressText = nil
                 }
                 return
             }
 
+            DispatchQueue.main.async {
+                self.applyProgressText = nil
+            }
             self.refreshState()
         }
     }
 
     private func validateEnvironment() {
         let fileManager = FileManager.default
-        let available =
-            fileManager.fileExists(atPath: daemonManagerPath) &&
-            fileManager.isExecutableFile(atPath: daemonManagerPath)
+        // FIX: Removed the strict `isExecutableFile` check.
+        // Because we pipe it through `/bin/sh`, it only needs to exist.
+        let available = fileManager.fileExists(atPath: daemonManagerPath)
 
         DispatchQueue.main.async {
             self.daemonManagerAvailable = available
-            self.environmentWarning = available ? nil : "Missing executable dependency: \(self.daemonManagerPath)"
+            self.environmentWarning = available ? nil : "Missing script dependency at: \(self.daemonManagerPath)"
         }
     }
 
@@ -404,7 +437,6 @@ final class AppModel: ObservableObject {
         configDaemons = resolved
     }
 
-    // NEW: Extracts both the label and the requested yes/no state from daemon.cfg
     private func parseImportedConfig(from content: String) -> (labels: [String], targets: [String: Bool]) {
         var labels: [String] = []
         var targets: [String: Bool] = [:]
@@ -422,8 +454,6 @@ final class AppModel: ObservableObject {
             if seen.insert(label).inserted {
                 labels.append(label)
                 
-                // Decode intended mode (yes/off/disable -> target is disabled(false))
-                // (no/on/enable -> target is enabled(true))
                 if fields.count >= 2 {
                     let mode = String(fields[1]).lowercased()
                     if ["yes", "off", "disable", "disabled"].contains(mode) {
@@ -509,7 +539,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func posixRun(executable: String, args: [String]) -> ProcessResult {
+    private func posixRun(executable: String, args: [String], onLine: ((String) -> Void)? = nil) -> ProcessResult {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in argv {
@@ -580,7 +610,43 @@ final class AppModel: ObservableObject {
         close(outPipe[1])
         outPipe[1] = -1
 
-        let output = readAll(from: outPipe[0])
+        var outputData = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        var leftover = ""
+
+        while true {
+            let bytesRead = read(outPipe[0], &buffer, buffer.count)
+
+            if bytesRead > 0 {
+                let chunk = Data(buffer[..<bytesRead])
+                outputData.append(chunk)
+
+                if let onLine = onLine {
+                    let chunkStr = String(decoding: chunk, as: UTF8.self)
+                    let lines = (leftover + chunkStr).components(separatedBy: .newlines)
+                    if lines.count > 1 {
+                        for i in 0..<(lines.count - 1) {
+                            onLine(lines[i])
+                        }
+                        leftover = lines.last ?? ""
+                    } else {
+                        leftover += chunkStr
+                    }
+                }
+            } else if bytesRead == 0 {
+                break
+            } else if errno == EINTR {
+                continue
+            } else {
+                break
+            }
+        }
+        
+        if let onLine = onLine, !leftover.isEmpty {
+            onLine(leftover)
+        }
+
+        let output = String(decoding: outputData, as: UTF8.self)
 
         close(outPipe[0])
         outPipe[0] = -1
@@ -601,27 +667,6 @@ final class AppModel: ObservableObject {
             exitCode: decodeWaitStatus(waitStatus),
             output: output
         )
-    }
-
-    private func readAll(from fileDescriptor: Int32) -> String {
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-
-        while true {
-            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
-
-            if bytesRead > 0 {
-                data.append(contentsOf: buffer[..<bytesRead])
-            } else if bytesRead == 0 {
-                break
-            } else if errno == EINTR {
-                continue
-            } else {
-                break
-            }
-        }
-
-        return String(decoding: data, as: UTF8.self)
     }
 
     private func decodeWaitStatus(_ status: Int32) -> Int32 {

@@ -13,6 +13,11 @@ targets:
       - path: DaemonApp
         excludes:
           - entitlements.plist
+          - daemonmanager
+          - daemon.cfg
+    resources:
+      - path: DaemonApp/daemonmanager
+      - path: DaemonApp/daemon.cfg
     info:
       path: DaemonApp/Info.plist
       properties:
