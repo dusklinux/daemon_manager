@@ -13,25 +13,30 @@ struct MainView: View {
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
                         .foregroundColor(model.isDarkTheme ? .green : .blue)
 
-                    // NEW: Dynamic 3-button layout based on config state
                     HStack(spacing: 12) {
                         Button(action: { showFilePicker = true }) {
                             Label("Import", systemImage: "square.and.arrow.down")
                         }
                         .buttonStyle(.bordered)
 
+                        // FIX: Explicitly separated the buttons to satisfy SwiftUI type checking
                         if model.rawConfigContent != nil {
                             Button(action: { model.applyImportedConfig() }) {
                                 Label("Apply", systemImage: "checkmark.seal.fill")
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
+                            
+                            Button(action: model.refreshAll) {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button(action: model.refreshAll) {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-
-                        Button(action: model.refreshAll) {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(model.rawConfigContent != nil ? .bordered : .borderedProminent)
                     }
 
                     if model.isScanningDaemons || model.isRefreshingState {
@@ -80,7 +85,6 @@ struct MainView: View {
                     }
                 }
             }
-            // FIX: Changed allowedContentTypes to [.item] to support .cfg and arbitrary extensions
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):

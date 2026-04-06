@@ -58,7 +58,6 @@ final class AppModel: ObservableObject {
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
     
-    // NEW: Stores the raw text of the imported config for the Apply button
     @Published private(set) var rawConfigContent: String? = nil
 
     private var disabledServices: Set<DisabledServiceKey>?
@@ -314,7 +313,7 @@ final class AppModel: ObservableObject {
 
             DispatchQueue.main.async {
                 self.importedLabels = labels
-                self.rawConfigContent = content // NEW: Cache the exact text for batch applying
+                self.rawConfigContent = content
                 self.resolveImportedConfig()
             }
         } catch {
@@ -322,7 +321,6 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Function to execute the daemonmanager apply-file bash command
     func applyImportedConfig() {
         guard let content = rawConfigContent else { return }
         guard daemonManagerAvailable else {
@@ -335,7 +333,6 @@ final class AppModel: ObservableObject {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // Write config to temporary secure location
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_daemon.cfg")
             do {
                 try content.write(to: tempURL, atomically: true, encoding: .utf8)
@@ -345,13 +342,11 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            // Run the apply-file bash script command
             let result = self.posixRun(
                 executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, "apply-file", tempURL.path]
             )
 
-            // Clean up the temp file
             try? FileManager.default.removeItem(at: tempURL)
 
             guard result.exitCode == 0 else {
@@ -367,7 +362,6 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            // Sync the Swift UI states
             self.refreshState()
         }
     }
@@ -506,7 +500,8 @@ final class AppModel: ObservableObject {
     }
 
     private func posixRun(executable: String, args: [String]) -> ProcessResult {
-        var argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
+        // FIX: Changed var to let to satisfy Swift compilation warnings
+        let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in argv {
                 free(pointer)
@@ -517,7 +512,9 @@ final class AppModel: ObservableObject {
             "PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "LC_ALL=C"
         ]
-        var env: [UnsafeMutablePointer<CChar>?] = environment.map { $0.withCString(strdup) } + [nil]
+        
+        // FIX: Changed var to let to satisfy Swift compilation warnings
+        let env: [UnsafeMutablePointer<CChar>?] = environment.map { $0.withCString(strdup) } + [nil]
         defer {
             for case let pointer? in env {
                 free(pointer)
