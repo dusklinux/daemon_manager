@@ -1,0 +1,42 @@
+name: Build TrollStore IPA
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Build Tools
+        run: brew install xcodegen ldid
+
+      - name: Generate Project & Compile
+        run: |
+          xcodegen generate
+          xcodebuild clean build \
+            -project DaemonApp.xcodeproj \
+            -scheme DaemonApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Inject Entitlements & Package IPA
+        run: |
+          rm -rf Payload DaemonApp.ipa
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/DaemonApp.app Payload/
+          ldid -S"DaemonApp/entitlements.plist" Payload/DaemonApp.app/DaemonApp
+          zip -qry DaemonApp.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DaemonApp-iOS16
+          path: DaemonApp.ipa

@@ -1,0 +1,23 @@
+name: DaemonApp
+
+options:
+  bundleIdPrefix: com.nugget
+
+targets:
+  DaemonApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: DaemonApp
+        excludes:
+          - entitlements.plist
+    info:
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      CODE_SIGN_IDENTITY: ""
+      CODE_SIGNING_REQUIRED: "NO"
+      CODE_SIGNING_ALLOWED: "NO"
