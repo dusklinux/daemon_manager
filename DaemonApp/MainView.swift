@@ -13,16 +13,25 @@ struct MainView: View {
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
                         .foregroundColor(model.isDarkTheme ? .green : .blue)
 
+                    // NEW: Dynamic 3-button layout based on config state
                     HStack(spacing: 12) {
                         Button(action: { showFilePicker = true }) {
-                            Label("Import Config", systemImage: "square.and.arrow.down")
+                            Label("Import", systemImage: "square.and.arrow.down")
                         }
                         .buttonStyle(.bordered)
+
+                        if model.rawConfigContent != nil {
+                            Button(action: { model.applyImportedConfig() }) {
+                                Label("Apply", systemImage: "checkmark.seal.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                        }
 
                         Button(action: model.refreshAll) {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(model.rawConfigContent != nil ? .bordered : .borderedProminent)
                     }
 
                     if model.isScanningDaemons || model.isRefreshingState {
@@ -46,7 +55,7 @@ struct MainView: View {
                 TabView {
                     DaemonListView(
                         services: model.configDaemons,
-                        emptyMessage: "No config loaded. Tap 'Import Config'."
+                        emptyMessage: "No config loaded. Tap 'Import'."
                     )
                     .tabItem {
                         Label("Config", systemImage: "doc.text")
@@ -71,7 +80,8 @@ struct MainView: View {
                     }
                 }
             }
-            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.plainText]) { result in
+            // FIX: Changed allowedContentTypes to [.item] to support .cfg and arbitrary extensions
+            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):
                     let access = url.startAccessingSecurityScopedResource()
@@ -185,7 +195,6 @@ struct DaemonRow: View {
         )
     }
 
-    // iOS SDK Fix: Replaced exhaustive switch with native if-let unwrap
     private var statusColor: Color {
         if let disabled = model.isDisabled(service) {
             return disabled ? .red : .green

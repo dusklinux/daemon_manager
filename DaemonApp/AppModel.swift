@@ -57,6 +57,9 @@ final class AppModel: ObservableObject {
     @Published var ramUsageText = "Calculating RAM..."
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
+    
+    // NEW: Stores the raw text of the imported config for the Apply button
+    @Published private(set) var rawConfigContent: String? = nil
 
     private var disabledServices: Set<DisabledServiceKey>?
     private var ambiguousLabels: Set<String> = []
@@ -65,8 +68,6 @@ final class AppModel: ObservableObject {
 
     private let mobileDomain: String
     private let daemonManagerPath = "/var/jb/basebin/daemonmanager"
-    
-    // Rootless Jailbreak absolute shell path
     private let rootlessShellPath = "/var/jb/bin/sh"
 
     init() {
@@ -181,7 +182,6 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
-                // FIX: Use the rootless shell path
                 let result = self.posixRun(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
 
                 guard result.exitCode == 0 else {
@@ -278,7 +278,6 @@ final class AppModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             let action = enable ? "enable" : "disable"
             
-            // FIX: Use the rootless shell path
             let result = self.posixRun(
                 executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, action, service.label]
@@ -315,10 +314,61 @@ final class AppModel: ObservableObject {
 
             DispatchQueue.main.async {
                 self.importedLabels = labels
+                self.rawConfigContent = content // NEW: Cache the exact text for batch applying
                 self.resolveImportedConfig()
             }
         } catch {
             presentError("Failed to import config: \(error.localizedDescription)")
+        }
+    }
+    
+    // NEW: Function to execute the daemonmanager apply-file bash command
+    func applyImportedConfig() {
+        guard let content = rawConfigContent else { return }
+        guard daemonManagerAvailable else {
+            presentError("Missing executable dependency: \(daemonManagerPath)")
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.isRefreshingState = true
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Write config to temporary secure location
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_daemon.cfg")
+            do {
+                try content.write(to: tempURL, atomically: true, encoding: .utf8)
+            } catch {
+                self.presentError("Failed to write temporary config file: \(error.localizedDescription)")
+                DispatchQueue.main.async { self.isRefreshingState = false }
+                return
+            }
+
+            // Run the apply-file bash script command
+            let result = self.posixRun(
+                executable: self.rootlessShellPath,
+                args: [self.daemonManagerPath, "apply-file", tempURL.path]
+            )
+
+            // Clean up the temp file
+            try? FileManager.default.removeItem(at: tempURL)
+
+            guard result.exitCode == 0 else {
+                let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                let message = detail.isEmpty
+                    ? "Failed to apply config batch (exit code \(result.exitCode))."
+                    : "Failed to apply config:\n\(detail)"
+
+                DispatchQueue.main.async {
+                    self.errorMessage = message
+                    self.isRefreshingState = false
+                }
+                return
+            }
+
+            // Sync the Swift UI states
+            self.refreshState()
         }
     }
 
