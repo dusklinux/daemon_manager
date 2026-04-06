@@ -2,6 +2,7 @@ name: DaemonApp
 
 options:
   bundleIdPrefix: com.nugget
+  projectFormat: xcode15_0
 
 targets:
   DaemonApp:
