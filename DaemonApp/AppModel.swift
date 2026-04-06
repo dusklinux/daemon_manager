@@ -178,7 +178,7 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
-                let result = self.posixRun(executable: "/bin/launchctl", args: ["print-disabled", domain])
+                let result = self.posixRun(executable: "/bin/sh", args: ["-c", "launchctl print-disabled \(domain)"])
 
                 guard result.exitCode == 0 else {
                     let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -468,7 +468,6 @@ final class AppModel: ObservableObject {
             }
         }
 
-        // iOS SDK Fix: Pointer initialized to nil to prevent 'init()' crash
         var fileActions: posix_spawn_file_actions_t? = nil
         let initStatus = posix_spawn_file_actions_init(&fileActions)
         guard initStatus == 0 else {
