@@ -19,7 +19,6 @@ struct MainView: View {
                         }
                         .buttonStyle(.bordered)
 
-                        // FIX: Explicitly separated the buttons to satisfy SwiftUI type checking
                         if model.rawConfigContent != nil {
                             Button(action: { model.applyImportedConfig() }) {
                                 Label("Apply", systemImage: "checkmark.seal.fill")
@@ -205,6 +204,12 @@ struct DaemonRow: View {
         }
         return .gray
     }
+    
+    // Helper to determine real toggle state
+    private var currentState: Bool? {
+        guard let disabled = model.isDisabled(service) else { return nil }
+        return !disabled
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -213,11 +218,26 @@ struct DaemonRow: View {
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(service.label)
-                        .font(.system(.callout, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 4) {
+                    
+                    // NEW: UI Layout includes the Config Badge next to the label
+                    HStack(spacing: 6) {
+                        Text(service.label)
+                            .font(.system(.callout, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        
+                        if let targetState = model.targetStates[service.label] {
+                            let isMatch = (currentState == targetState)
+                            Text(targetState ? "CFG: ON" : "CFG: OFF")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(isMatch ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
+                                .foregroundColor(isMatch ? .green : .orange)
+                                .clipShape(Capsule())
+                        }
+                    }
 
                     Text(service.metadataText)
                         .font(.caption2)

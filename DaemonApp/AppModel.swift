@@ -59,6 +59,9 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     
     @Published private(set) var rawConfigContent: String? = nil
+    
+    // NEW: Tracks the intended state from the imported config (true = Should be ON)
+    @Published private(set) var targetStates: [String: Bool] = [:]
 
     private var disabledServices: Set<DisabledServiceKey>?
     private var importedLabels: [String] = []
@@ -103,7 +106,6 @@ final class AppModel: ObservableObject {
         return disabledServices.contains(DisabledServiceKey(domain: domain, label: service.label))
     }
 
-    // FIX: Removed the ambiguousLabels lockout. You can now toggle anything.
     func canToggle(_ service: LaunchdService) -> Bool {
         daemonManagerAvailable &&
         service.domain != nil &&
@@ -293,13 +295,10 @@ final class AppModel: ObservableObject {
     func importConfig(url: URL) {
         var fileContent: String? = nil
         
-        // FIX 1: TrollStore Unsandboxed POSIX bypass.
-        // We directly rip the file contents out using its absolute path to avoid Sandbox security-scope rejections.
         if let data = FileManager.default.contents(atPath: url.path) {
             fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
         }
         
-        // FIX 2: Standard Apple fallback just in case.
         if fileContent == nil {
             if let data = try? Data(contentsOf: url) {
                 fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
@@ -311,10 +310,12 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let labels = parseImportedLabels(from: content)
+        // NEW: We now parse both the labels AND their intended state.
+        let parsed = parseImportedConfig(from: content)
 
         DispatchQueue.main.async {
-            self.importedLabels = labels
+            self.importedLabels = parsed.labels
+            self.targetStates = parsed.targets
             self.rawConfigContent = content
             self.resolveImportedConfig()
         }
@@ -403,28 +404,38 @@ final class AppModel: ObservableObject {
         configDaemons = resolved
     }
 
-    private func parseImportedLabels(from content: String) -> [String] {
+    // NEW: Extracts both the label and the requested yes/no state from daemon.cfg
+    private func parseImportedConfig(from content: String) -> (labels: [String], targets: [String: Bool]) {
         var labels: [String] = []
+        var targets: [String: Bool] = [:]
         var seen = Set<String>()
 
         for rawLine in content.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            guard !line.isEmpty, !line.hasPrefix("#") else {
-                continue
-            }
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
 
-            guard let firstToken = line.split(whereSeparator: \.isWhitespace).first else {
-                continue
-            }
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            guard let firstToken = fields.first else { continue }
 
             let label = String(firstToken)
             if seen.insert(label).inserted {
                 labels.append(label)
+                
+                // Decode intended mode (yes/off/disable -> target is disabled(false))
+                // (no/on/enable -> target is enabled(true))
+                if fields.count >= 2 {
+                    let mode = String(fields[1]).lowercased()
+                    if ["yes", "off", "disable", "disabled"].contains(mode) {
+                        targets[label] = false
+                    } else if ["no", "on", "enable", "enabled"].contains(mode) {
+                        targets[label] = true
+                    }
+                }
             }
         }
 
-        return labels
+        return (labels, targets)
     }
 
     private func parseDisabledServices(from output: String, domain: String) -> Set<DisabledServiceKey> {
