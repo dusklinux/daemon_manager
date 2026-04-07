@@ -8,7 +8,7 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
-                // ROW 1: Maximize real estate. RAM -> Apply -> Pwd -> Theme
+                // ROW 1: System Info and Persistent Settings
                 HStack(spacing: 8) {
                     Text(model.ramUsageText)
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
@@ -41,15 +41,8 @@ struct MainView: View {
                     }
                 }
 
-                // ROW 2: Primary Controls
-                if model.isApplyingConfig {
-                    Button(action: { model.cancelApply() }) {
-                        Label("Cancel Execution", systemImage: "xmark.octagon.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                } else if model.showLogConsole {
+                // ROW 2: Primary Controls (Cancel button removed as requested)
+                if model.showLogConsole && !model.isApplyingConfig {
                     HStack(spacing: 12) {
                         Button(action: { model.showLogConsole = false; model.dismissError() }) {
                             Label("Dismiss Log", systemImage: "checkmark.circle.fill")
@@ -64,7 +57,7 @@ struct MainView: View {
                             .buttonStyle(.bordered)
                         }
                     }
-                } else {
+                } else if !model.isApplyingConfig {
                     HStack(spacing: 12) {
                         Button(action: { showFilePicker = true }) {
                             Label("Import", systemImage: "square.and.arrow.down")
@@ -84,6 +77,7 @@ struct MainView: View {
                     .font(.system(.subheadline, weight: .semibold))
                 }
 
+                // Status Indicator for active processes
                 if model.isScanningDaemons || model.isRefreshingState || model.isApplyingConfig {
                     HStack(spacing: 8) {
                         ProgressView()
@@ -93,6 +87,10 @@ struct MainView: View {
                             Text(progressText)
                                 .font(.system(.caption, design: .monospaced, weight: .bold))
                                 .foregroundColor(.secondary)
+                        } else if model.isApplyingConfig {
+                            Text("Executing as root...")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.orange)
                         }
                     }
                 }
@@ -100,6 +98,7 @@ struct MainView: View {
             .padding()
             .background(Color(UIColor.secondarySystemBackground))
 
+            // Environment Warnings (Script missing, etc.)
             if let warning = model.environmentWarning {
                 Text(warning)
                     .font(.footnote)
@@ -116,26 +115,25 @@ struct MainView: View {
                 TabView {
                     DaemonListView(
                         services: model.configDaemons,
-                        emptyMessage: "No config loaded. Tap 'Import'."
+                        emptyMessage: "No config loaded. Import 'daemon.cfg'."
                     )
                     .tabItem { Label("Config", systemImage: "doc.text") }
 
                     DaemonListView(
                         services: model.allDaemons,
-                        emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
+                        emptyMessage: model.isScanningDaemons ? "Scanning launchd..." : "No services found."
                     )
                     .tabItem { Label("Services", systemImage: "cpu") }
                 }
             }
         }
+        // Combined file importer for daemonmanager or daemon.cfg
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
             switch result {
             case .success(let url):
-                let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
-                model.importConfig(url: url)
+                model.importFile(url: url)
             case .failure(let error):
-                model.errorMessage = "File import failed: \(error.localizedDescription)"
+                model.errorMessage = "Import failed: \(error.localizedDescription)"
             }
         }
         .alert(
@@ -167,9 +165,7 @@ struct ConsoleLogView: View {
             .background(Color.black)
             .foregroundColor(.green)
             .onChange(of: logText) { _ in
-                withAnimation {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }
@@ -177,10 +173,8 @@ struct ConsoleLogView: View {
 
 struct DaemonListView: View {
     @EnvironmentObject var model: AppModel
-
     let services: [LaunchdService]
     let emptyMessage: String
-
     @State private var searchText = ""
     @State private var filter: FilterType = .all
 
@@ -240,13 +234,9 @@ struct DaemonListView: View {
             .padding()
 
             if services.isEmpty {
-                Spacer()
-                Text(emptyMessage).foregroundColor(.secondary)
-                Spacer()
+                Spacer(); Text(emptyMessage).foregroundColor(.secondary); Spacer()
             } else if filteredServices.isEmpty {
-                Spacer()
-                Text("No matching services.").foregroundColor(.secondary)
-                Spacer()
+                Spacer(); Text("No matching services.").foregroundColor(.secondary); Spacer()
             } else {
                 List(filteredServices) { service in
                     DaemonRow(service: service)
@@ -259,7 +249,6 @@ struct DaemonListView: View {
 
 struct DaemonRow: View {
     @EnvironmentObject var model: AppModel
-
     let service: LaunchdService
     @State private var isExpanded = false
 
@@ -292,7 +281,6 @@ struct DaemonRow: View {
                         Text(service.label)
                             .font(.system(.callout, design: .monospaced))
                             .lineLimit(1)
-                            .truncationMode(.middle)
                         
                         if let targetState = model.targetStates[service.label] {
                             let isMatch = (currentState == targetState)
@@ -304,10 +292,7 @@ struct DaemonRow: View {
                                 .clipShape(Capsule())
                         }
                     }
-
-                    Text(service.metadataText)
-                        .font(.caption2).foregroundColor(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
+                    Text(service.metadataText).font(.caption2).foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -321,7 +306,7 @@ struct DaemonRow: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }
+            .onTapGesture { withAnimation { isExpanded.toggle() } }
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
@@ -340,17 +325,17 @@ struct DaemonRow: View {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
-        "com.apple.tipsd": "Handles Tips content and related suggestion delivery.",
-        "com.apple.crash_mover": "Moves or processes crash logs in the background.",
-        "com.apple.powerd": "Core power-management service. Disabling it can destabilize the device.",
-        "com.apple.SpringBoard": "Main iOS shell and UI process. Disabling it can break the interface.",
-        "com.apple.searchd": "Supports search indexing and related queries.",
-        "com.apple.wifid": "Core Wi-Fi service. Disabling it can break wireless connectivity."
+        "com.apple.tipsd": "Handles Tips content delivery.",
+        "com.apple.crash_mover": "Processes background crash logs.",
+        "com.apple.powerd": "Core power management (Sensitive).",
+        "com.apple.SpringBoard": "Main iOS UI process.",
+        "com.apple.searchd": "Search indexing support.",
+        "com.apple.wifid": "Core Wi-Fi service."
     ]
 
     static func get(for label: String) -> String {
-        if let description = dict[label] { return description }
-        if label.localizedCaseInsensitiveContains("accessibility") { return "Related to iOS accessibility features." }
-        return "Toggles launchd disabled-state through the external wrapper script."
+        if let desc = dict[label] { return desc }
+        if label.localizedCaseInsensitiveContains("accessibility") { return "iOS Accessibility feature support." }
+        return "Managed via launchctl wrapper."
     }
 }

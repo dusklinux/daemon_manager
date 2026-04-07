@@ -68,8 +68,14 @@ final class AppModel: ObservableObject {
 
     private let mobileDomain: String
     private let rootlessShellPath = "/var/jb/bin/sh"
-    private var daemonManagerPath: String = ""
-    private var lastImportedPath: String? = nil
+    
+    // Persistent paths for the script and config
+    @Published var daemonManagerPath: String = UserDefaults.standard.string(forKey: "customScriptPath") ?? "/var/jb/basebin/daemonmanager" {
+        didSet { UserDefaults.standard.set(daemonManagerPath, forKey: "customScriptPath") }
+    }
+    @Published var lastImportedConfigPath: String? = UserDefaults.standard.string(forKey: "customConfigPath") {
+        didSet { UserDefaults.standard.set(lastImportedConfigPath, forKey: "customConfigPath") }
+    }
 
     init() {
         if let pw = getpwnam("mobile") {
@@ -78,7 +84,6 @@ final class AppModel: ObservableObject {
             mobileDomain = "user/501"
         }
 
-        self.daemonManagerPath = resolveScriptDependency()
         validateEnvironment()
         startRAMTimer()
         fetchAllDaemons()
@@ -89,31 +94,14 @@ final class AppModel: ObservableObject {
     deinit {
         timer?.invalidate()
     }
-    
-    // FIX 2: Force filesystem paths to bypass broken bundle registries for extensionless files.
-    private func resolveScriptDependency() -> String {
-        let externalPath = "/var/jb/basebin/daemonmanager"
-        if FileManager.default.fileExists(atPath: externalPath) {
-            return externalPath
-        }
-        
-        let bundledPath = Bundle.main.bundleURL.appendingPathComponent("daemonmanager").path
-        if FileManager.default.fileExists(atPath: bundledPath) {
-            return bundledPath
-        }
-        
-        return externalPath
-    }
 
     func refreshAll() {
         validateEnvironment()
         fetchAllDaemons()
         refreshState()
         
-        if let path = lastImportedPath, let content = try? String(contentsOfFile: path, encoding: .utf8) {
+        if let path = lastImportedConfigPath, let content = try? String(contentsOfFile: path, encoding: .utf8) {
             processConfigContent(content)
-        } else {
-            loadInitialConfig()
         }
     }
 
@@ -147,37 +135,27 @@ final class AppModel: ObservableObject {
     private func updateRAMUsage() {
         let hostPort = mach_host_self()
         defer { mach_port_deallocate(mach_task_self_, hostPort) }
-
         var pageSize: vm_size_t = 0
         guard host_page_size(hostPort, &pageSize) == KERN_SUCCESS else { return }
-
         var vmStats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
-
         let status = withUnsafeMutablePointer(to: &vmStats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
                 host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
             }
         }
-
         guard status == KERN_SUCCESS else { return }
-
         let freeBytes = Double(vmStats.free_count + vmStats.speculative_count) * Double(pageSize)
         let freeMB = freeBytes / 1_048_576.0
-
-        DispatchQueue.main.async {
-            self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB)
-        }
+        DispatchQueue.main.async { self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB) }
     }
 
     func refreshState(completion: (() -> Void)? = nil) {
         DispatchQueue.main.async { self.isRefreshingState = true }
-
         DispatchQueue.global(qos: .userInitiated).async {
             let domains = ["system", self.mobileDomain]
             var merged = Set<DisabledServiceKey>()
             var failures: [String] = []
-
             for domain in domains {
                 let result = self.posixRunSync(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
                 guard result.exitCode == 0 else {
@@ -186,7 +164,6 @@ final class AppModel: ObservableObject {
                 }
                 merged.formUnion(self.parseDisabledServices(from: result.output, domain: domain))
             }
-
             DispatchQueue.main.async {
                 if failures.isEmpty { self.disabledServices = merged }
                 self.isRefreshingState = false
@@ -198,7 +175,6 @@ final class AppModel: ObservableObject {
 
     func fetchAllDaemons() {
         DispatchQueue.main.async { self.isScanningDaemons = true }
-
         DispatchQueue.global(qos: .userInitiated).async {
             let locations: [(path: String, kind: LaunchdService.Kind, domain: String)] = [
                 ("/System/Library/LaunchAgents", .agent, self.mobileDomain),
@@ -206,21 +182,16 @@ final class AppModel: ObservableObject {
                 ("/var/jb/Library/LaunchAgents", .agent, self.mobileDomain),
                 ("/var/jb/Library/LaunchDaemons", .daemon, "system")
             ]
-
             var servicesByID: [String: LaunchdService] = [:]
-
             for location in locations {
                 let directoryURL = URL(fileURLWithPath: location.path, isDirectory: true)
                 guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
-
                 for fileURL in fileURLs where fileURL.pathExtension == "plist" {
                     guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else { continue }
                     servicesByID[service.id] = service
                 }
             }
-
             let services = servicesByID.values.sorted(by: Self.sortServices)
-
             DispatchQueue.main.async {
                 self.allDaemons = services
                 self.isScanningDaemons = false
@@ -233,12 +204,10 @@ final class AppModel: ObservableObject {
         guard canToggle(service) else { return }
         let pwd = self.rootPassword
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
-
         DispatchQueue.global(qos: .userInitiated).async {
             let action = enable ? "enable" : "disable"
             let elevated = self.buildElevatedCommand(action: action, args: [service.label], pwd: pwd)
             let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
-
             guard result.exitCode == 0 else {
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
@@ -250,38 +219,39 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // FIX 2 (Part B): Fallback config resolver
     private func loadInitialConfig() {
-        let externalConfig = "/var/jb/basebin/daemon.cfg"
-        if FileManager.default.fileExists(atPath: externalConfig) {
-            importConfig(url: URL(fileURLWithPath: externalConfig))
+        if let path = lastImportedConfigPath, FileManager.default.fileExists(atPath: path) {
+            importFile(url: URL(fileURLWithPath: path))
         } else {
-            let bundledConfigPath = Bundle.main.bundleURL.appendingPathComponent("daemon.cfg").path
-            if FileManager.default.fileExists(atPath: bundledConfigPath) {
-                importConfig(url: URL(fileURLWithPath: bundledConfigPath))
+            let defaultPath = "/var/jb/basebin/daemon.cfg"
+            if FileManager.default.fileExists(atPath: defaultPath) {
+                importFile(url: URL(fileURLWithPath: defaultPath))
             }
         }
     }
 
-    func importConfig(url: URL) {
-        self.lastImportedPath = url.path
-        var fileContent: String? = nil
+    func importFile(url: URL) {
+        let fileName = url.lastPathComponent
         
-        if let data = FileManager.default.contents(atPath: url.path) {
-            fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
-        } else {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            if let data = try? Data(contentsOf: url) {
-                fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
-            }
-        }
-
-        guard let content = fileContent else {
-            presentError("Permission Denied: Cannot read config file.")
+        // Ensure we can read the file (security scoped for picker)
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        
+        guard let data = try? Data(contentsOf: url) else {
+            presentError("Permission Denied: Cannot read \(fileName).")
             return
         }
-        processConfigContent(content)
+
+        if fileName == "daemonmanager" {
+            self.daemonManagerPath = url.path
+            validateEnvironment()
+            liveLog += "\n[+] Detected and set new script path: \(url.path)"
+        } else {
+            // Assume it is a config file
+            self.lastImportedConfigPath = url.path
+            let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) ?? ""
+            processConfigContent(content)
+        }
     }
     
     private func processConfigContent(_ content: String) {
@@ -291,32 +261,6 @@ final class AppModel: ObservableObject {
             self.targetStates = parsed.targets
             self.rawConfigContent = content
             self.resolveImportedConfig()
-        }
-    }
-    
-    // FIX 1: Nuclear Cancel via Argument Vector Mapping (pkill -f)
-    func cancelApply() {
-        guard let pid = currentPid else { return }
-        let pwd = self.rootPassword
-        
-        DispatchQueue.main.async {
-            self.liveLog += "\n[!] User Cancelled: Dispatching aggressive root kill signal..."
-        }
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            // pkill -f matches the full argument string, ensuring we kill the `sh /path/to/daemonmanager` invocation.
-            // We append a manual awk fallback to ensure maximum redundancy if procursus pkill is absent.
-            let killScript = "/var/jb/usr/bin/pkill -9 -f daemonmanager 2>/dev/null || /usr/bin/pkill -9 -f daemonmanager 2>/dev/null || ps aux | grep daemonmanager | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null"
-            let elevated = self.buildElevatedCommand(action: killScript, args: [], pwd: pwd, isRaw: true)
-            self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
-            
-            // Local fallback cleanup
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
-                if self.currentPid == pid {
-                    kill(pid, SIGKILL)
-                    kill(-pid, SIGKILL)
-                }
-            }
         }
     }
     
@@ -349,8 +293,7 @@ final class AppModel: ObservableObject {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
-                    
-                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 && exitCode != 137 {
+                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
                     self.refreshState()
@@ -360,19 +303,8 @@ final class AppModel: ObservableObject {
     }
     
     func applyImportedConfig() {
-        guard let content = rawConfigContent else { return }
-        let tempURL = URL(fileURLWithPath: "/var/mobile/Library/Preferences/temp_daemon.cfg")
-        
-        do {
-            try content.write(to: tempURL, atomically: true, encoding: .utf8)
-        } catch {
-            presentError("Failed to write temporary config: \(error.localizedDescription)")
-            return
-        }
-
-        executeBatchOperation(action: "apply-file", args: [tempURL.path], progressTextPrefix: "Applying") {
-            try? FileManager.default.removeItem(at: tempURL)
-        }
+        guard let path = lastImportedConfigPath else { return }
+        executeBatchOperation(action: "apply-file", args: [path], progressTextPrefix: "Applying")
     }
 
     func resetConfig() {
@@ -388,7 +320,7 @@ final class AppModel: ObservableObject {
         if isRaw {
             innerCmd = action
         } else {
-            // Passing to rootless shell circumvents +x bit execution denials for bundled scripts
+            // Force execution via shell to bypass +x issues on some filesystems
             innerCmd = "\"\(self.rootlessShellPath)\" \"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         }
         
@@ -405,15 +337,6 @@ final class AppModel: ObservableObject {
             if pid == 0:
                 os.execv(cmd[0], cmd)
             else:
-                def handle_term(signum, frame):
-                    try:
-                        os.kill(pid, signal.SIGKILL)
-                    except:
-                        pass
-                    sys.exit(143)
-                signal.signal(signal.SIGTERM, handle_term)
-                signal.signal(signal.SIGINT, handle_term)
-                
                 buffer = b""
                 while True:
                     r, w, e = select.select([fd], [], [], 2.0)
@@ -446,9 +369,7 @@ final class AppModel: ObservableObject {
         
     private var pythonPath: String {
         let paths = ["/var/jb/usr/bin/python3", "/var/jb/usr/local/bin/python3", "/usr/bin/python3"]
-        for p in paths {
-            if FileManager.default.fileExists(atPath: p) { return p }
-        }
+        for p in paths { if FileManager.default.fileExists(atPath: p) { return p } }
         return "/var/jb/usr/bin/python3"
     }
 
@@ -456,7 +377,7 @@ final class AppModel: ObservableObject {
         let available = FileManager.default.fileExists(atPath: daemonManagerPath)
         DispatchQueue.main.async {
             self.daemonManagerAvailable = available
-            self.environmentWarning = available ? nil : "Missing script dependency at: \(self.daemonManagerPath)"
+            self.environmentWarning = available ? nil : "Missing script at: \(self.daemonManagerPath)"
         }
     }
 
@@ -465,7 +386,6 @@ final class AppModel: ObservableObject {
         let grouped = Dictionary(grouping: allDaemons, by: \.label)
         var resolved: [LaunchdService] = []
         var seen = Set<String>()
-
         for label in importedLabels {
             if let matches = grouped[label], !matches.isEmpty {
                 for service in matches.sorted(by: Self.sortServices) where seen.insert(service.id).inserted {
@@ -473,9 +393,7 @@ final class AppModel: ObservableObject {
                 }
             } else {
                 let unresolved = LaunchdService.unresolved(label: label)
-                if seen.insert(unresolved.id).inserted {
-                    resolved.append(unresolved)
-                }
+                if seen.insert(unresolved.id).inserted { resolved.append(unresolved) }
             }
         }
         configDaemons = resolved
@@ -485,13 +403,11 @@ final class AppModel: ObservableObject {
         var labels: [String] = []
         var targets: [String: Bool] = [:]
         var seen = Set<String>()
-
         for rawLine in content.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty, !line.hasPrefix("#") else { continue }
             let fields = line.split(whereSeparator: \.isWhitespace)
             guard let firstToken = fields.first else { continue }
-
             let label = String(firstToken)
             if seen.insert(label).inserted {
                 labels.append(label)
@@ -547,65 +463,48 @@ final class AppModel: ObservableObject {
     private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
-
         var envDict = ProcessInfo.processInfo.environment
         envDict["PATH"] = "/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (envDict["PATH"] ?? "")
         envDict["LC_ALL"] = "C"
         let envStrings = envDict.map { "\($0.key)=\($0.value)" }
         let env: [UnsafeMutablePointer<CChar>?] = envStrings.map { strdup($0) } + [nil]
         defer { for case let pointer? in env { free(pointer) } }
-
         var fileActions: posix_spawn_file_actions_t? = nil
         posix_spawn_file_actions_init(&fileActions)
         defer { posix_spawn_file_actions_destroy(&fileActions) }
-
         var outPipe: [Int32] = [-1, -1]
         pipe(&outPipe)
-        
         posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDOUT_FILENO)
         posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDERR_FILENO)
         posix_spawn_file_actions_addclose(&fileActions, outPipe[0])
         posix_spawn_file_actions_addclose(&fileActions, outPipe[1])
-
         var attr: posix_spawnattr_t? = nil
         posix_spawnattr_init(&attr)
         defer { posix_spawnattr_destroy(&attr) }
-        
         var flags: Int16 = 0
         posix_spawnattr_getflags(&attr, &flags)
         posix_spawnattr_setflags(&attr, flags | Int16(POSIX_SPAWN_SETPGROUP))
         posix_spawnattr_setpgroup(&attr, 0)
-
         var pid: pid_t = 0
         let spawnStatus = posix_spawn(&pid, executable, &fileActions, &attr, argv, env)
-        
         close(outPipe[1]) 
-
         if spawnStatus != 0 {
             close(outPipe[0])
             onCompletion(-1)
             return
         }
-
         self.currentPid = pid
         let fd = outPipe[0]
-        
         fcntl(fd, F_SETFL, O_NONBLOCK)
-        
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
-        
         source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 4096)
             let bytesRead = read(fd, &buffer, buffer.count)
-            
             if bytesRead > 0 {
                 let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
                 onOutput(text)
-            } else if bytesRead == 0 {
-                source.cancel()
-            }
+            } else if bytesRead == 0 { source.cancel() }
         }
-        
         source.setCancelHandler {
             close(fd)
             var status: Int32 = 0
@@ -616,7 +515,6 @@ final class AppModel: ObservableObject {
                 onCompletion(finalCode)
             }
         }
-        
         source.resume()
     }
 
@@ -624,14 +522,10 @@ final class AppModel: ObservableObject {
         let semaphore = DispatchSemaphore(value: 0)
         var fullOutput = ""
         var finalCode: Int32 = -1
-        
-        posixRunAsync(executable: executable, args: args) { text in
-            fullOutput += text
-        } onCompletion: { code in
+        posixRunAsync(executable: executable, args: args) { text in fullOutput += text } onCompletion: { code in
             finalCode = code
             semaphore.signal()
         }
-        
         semaphore.wait()
         return (finalCode, fullOutput)
     }
