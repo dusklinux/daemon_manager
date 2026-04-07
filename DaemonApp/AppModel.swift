@@ -90,15 +90,16 @@ final class AppModel: ObservableObject {
         timer?.invalidate()
     }
     
-    // FIX 2: Stop copying to temp dirs. Use the bundle path directly.
+    // FIX 2: Force filesystem paths to bypass broken bundle registries for extensionless files.
     private func resolveScriptDependency() -> String {
         let externalPath = "/var/jb/basebin/daemonmanager"
         if FileManager.default.fileExists(atPath: externalPath) {
             return externalPath
         }
         
-        if let bundlePath = Bundle.main.path(forResource: "daemonmanager", ofType: nil) {
-            return bundlePath
+        let bundledPath = Bundle.main.bundleURL.appendingPathComponent("daemonmanager").path
+        if FileManager.default.fileExists(atPath: bundledPath) {
+            return bundledPath
         }
         
         return externalPath
@@ -249,12 +250,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // FIX 2 (Part B): Fallback config resolver
     private func loadInitialConfig() {
         let externalConfig = "/var/jb/basebin/daemon.cfg"
         if FileManager.default.fileExists(atPath: externalConfig) {
             importConfig(url: URL(fileURLWithPath: externalConfig))
-        } else if let bundledConfig = Bundle.main.url(forResource: "daemon", withExtension: "cfg") {
-            importConfig(url: bundledConfig)
+        } else {
+            let bundledConfigPath = Bundle.main.bundleURL.appendingPathComponent("daemon.cfg").path
+            if FileManager.default.fileExists(atPath: bundledConfigPath) {
+                importConfig(url: URL(fileURLWithPath: bundledConfigPath))
+            }
         }
     }
 
@@ -289,21 +294,23 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // FIX 1: Nuke the Process Group natively. 
+    // FIX 1: Nuclear Cancel via Argument Vector Mapping (pkill -f)
     func cancelApply() {
         guard let pid = currentPid else { return }
         let pwd = self.rootPassword
         
         DispatchQueue.main.async {
-            self.liveLog += "\n[!] User Cancelled: Dispatching root kill signal to PGID -\(pid)..."
+            self.liveLog += "\n[!] User Cancelled: Dispatching aggressive root kill signal..."
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            // Because posix_spawn sets PGID to PID, sending SIGKILL to -pid kills the entire tree.
-            let killScript = "/var/jb/bin/kill -9 -\(pid) 2>/dev/null || /bin/kill -9 -\(pid) 2>/dev/null"
+            // pkill -f matches the full argument string, ensuring we kill the `sh /path/to/daemonmanager` invocation.
+            // We append a manual awk fallback to ensure maximum redundancy if procursus pkill is absent.
+            let killScript = "/var/jb/usr/bin/pkill -9 -f daemonmanager 2>/dev/null || /usr/bin/pkill -9 -f daemonmanager 2>/dev/null || ps aux | grep daemonmanager | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null"
             let elevated = self.buildElevatedCommand(action: killScript, args: [], pwd: pwd, isRaw: true)
             self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
             
+            // Local fallback cleanup
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
                 if self.currentPid == pid {
                     kill(pid, SIGKILL)
@@ -372,7 +379,6 @@ final class AppModel: ObservableObject {
         executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
     }
 
-    // FIX 2 (Part B): Invoke the script dynamically through /var/jb/bin/sh
     private func buildElevatedCommand(action: String, args: [String], pwd: String, isRaw: Bool = false) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
         let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
@@ -382,8 +388,8 @@ final class AppModel: ObservableObject {
         if isRaw {
             innerCmd = action
         } else {
-            // Using the shell executable bypasses +x permission drops from Xcode/TrollStore bundling.
-            innerCmd = "\(self.rootlessShellPath) \"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
+            // Passing to rootless shell circumvents +x bit execution denials for bundled scripts
+            innerCmd = "\"\(self.rootlessShellPath)\" \"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         }
         
         if FileManager.default.fileExists(atPath: sudoPath) {
