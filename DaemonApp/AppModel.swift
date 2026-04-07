@@ -160,15 +160,11 @@ final class AppModel: ObservableObject {
 
         guard status == KERN_SUCCESS else { return }
 
-        let totalBytes = Double(ProcessInfo.processInfo.physicalMemory)
         let freeBytes = Double(vmStats.free_count + vmStats.speculative_count) * Double(pageSize)
-        let usedBytes = max(0, totalBytes - freeBytes)
-
-        let totalGB = totalBytes / 1_073_741_824.0
-        let usedGB = usedBytes / 1_073_741_824.0
+        let freeGB = freeBytes / 1_073_741_824.0
 
         DispatchQueue.main.async {
-            self.ramUsageText = String(format: "System RAM: %.2f GB Used / %.2f GB Total", usedGB, totalGB)
+            self.ramUsageText = String(format: "Free RAM: %.2f GB", freeGB)
         }
     }
 
@@ -278,26 +274,27 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Robust Process Group & PTY Termination
+    // NEW: Nuclear Root-Level Cancellation
     func cancelApply() {
-        if let pid = currentPid {
-            // 1. Send SIGTERM so the python handler can catch it and kill the isolated PTY child
-            kill(pid, SIGTERM)
-            kill(-pid, SIGTERM) // Target process group
-            
-            // 2. Schedule a merciless SIGKILL sweep 0.5s later to ensure zero zombies are left behind
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-                kill(pid, SIGKILL)
-                kill(-pid, SIGKILL)
-            }
-            
-            DispatchQueue.main.async {
-                self.liveLog += "\n[!] User Cancelled: Force-terminating process tree..."
-            }
+        guard let pid = currentPid else { return }
+        let pwd = self.rootPassword
+        
+        DispatchQueue.main.async {
+            self.liveLog += "\n[!] User Cancelled: Executing root SIGKILL to terminate process tree..."
+        }
+        
+        // 1. Send local termination to the immediate Swift wrapper child
+        kill(pid, SIGTERM)
+        kill(-pid, SIGTERM)
+        
+        // 2. Eradicate the root process tree spawned via su/sudo using pkill.
+        // This is necessary because mobile user 501 cannot signal root user 0 processes directly.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let elevated = self.buildElevatedCommand(action: "pkill", args: ["-9", "-f", "daemonmanager"], pwd: pwd, isRaw: true)
+            self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
         }
     }
     
-    // NEW: Centralized batch execution pipeline
     private func executeBatchOperation(action: String, args: [String], progressTextPrefix: String, onFinish: (() -> Void)? = nil) {
         guard daemonManagerAvailable else { return }
         let pwd = self.rootPassword
@@ -329,8 +326,8 @@ final class AppModel: ObservableObject {
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     
-                    // Ignore expected termination codes (15: SIGTERM, 143: Terminated via Trap, 9: SIGKILL)
-                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 {
+                    // Ignore expected termination codes (15: SIGTERM, 143: Terminated via Trap, 9: SIGKILL from pkill)
+                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 && exitCode != 137 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
                     self.refreshState()
@@ -359,19 +356,23 @@ final class AppModel: ObservableObject {
         executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
     }
 
-    private func buildElevatedCommand(action: String, args: [String], pwd: String) -> (executable: String, arguments: [String]) {
+    // NEW: isRaw flag enables passing raw commands like pkill directly into the elevation pipeline
+    private func buildElevatedCommand(action: String, args: [String], pwd: String, isRaw: Bool = false) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
-        
         let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
         let safeArgs = args.map { "\"\($0)\"" }.joined(separator: " ")
-        let innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         
-        // Fast-path: Sudo installed
+        let innerCmd: String
+        if isRaw {
+            innerCmd = "\(action) \(safeArgs)"
+        } else {
+            innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
+        }
+        
         if FileManager.default.fileExists(atPath: sudoPath) {
             let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(self.rootlessShellPath) -c '\(innerCmd)'"
             return (self.rootlessShellPath, ["-c", shellCmd])
         } else {
-            // Fallback: Python PTY with Signal Interception injection
             let pythonExe = pythonPath
             let pythonScript = """
             import os, sys, pty, select, signal
@@ -550,7 +551,6 @@ final class AppModel: ObservableObject {
         
         var flags: Int16 = 0
         posix_spawnattr_getflags(&attr, &flags)
-        // Set process group to isolate the spawn tree, allowing us to SIGKILL it entirely
         posix_spawnattr_setflags(&attr, flags | Int16(POSIX_SPAWN_SETPGROUP))
         posix_spawnattr_setpgroup(&attr, 0)
 

@@ -8,16 +8,19 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
+                // ROW 1: System Info & Auth Header
                 HStack {
                     Text(model.ramUsageText)
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
                         .foregroundColor(model.isDarkTheme ? .green : .blue)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     
                     Spacer()
                     
                     SecureField("Root Pwd", text: $model.rootPassword)
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 120)
+                        .frame(maxWidth: 90)
                         .font(.system(.caption, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
@@ -25,11 +28,10 @@ struct MainView: View {
                     Button(action: { model.isDarkTheme.toggle() }) {
                         Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
                             .foregroundColor(.primary)
-                            .imageScale(.large)
                     }
                 }
 
-                // Primary Execution Controls
+                // ROW 2: Primary Controls (Now all cleanly on one line)
                 if model.isApplyingConfig {
                     Button(action: { model.cancelApply() }) {
                         Label("Cancel Execution", systemImage: "xmark.octagon.fill")
@@ -37,9 +39,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
-                    .padding(.horizontal)
                 } else if model.showLogConsole {
-                    // Log Dismissal & Export Options
                     HStack(spacing: 12) {
                         Button(action: { model.showLogConsole = false; model.dismissError() }) {
                             Label("Dismiss Log", systemImage: "checkmark.circle.fill")
@@ -55,8 +55,7 @@ struct MainView: View {
                         }
                     }
                 } else {
-                    // Standard Action Buttons
-                    HStack(spacing: 12) {
+                    HStack(spacing: 6) {
                         Button(action: { showFilePicker = true }) {
                             Label("Import", systemImage: "square.and.arrow.down")
                         }
@@ -71,16 +70,18 @@ struct MainView: View {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
                         .buttonStyle(.bordered)
-                    }
-                    
-                    // Show Apply only if a config is actively loaded into memory
-                    if model.rawConfigContent != nil {
-                        Button(action: { model.applyImportedConfig() }) {
-                            Label("Apply Imported Config", systemImage: "checkmark.seal.fill")
+                        
+                        if model.rawConfigContent != nil {
+                            Button(action: { model.applyImportedConfig() }) {
+                                Label("Apply Config", systemImage: "checkmark.seal.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
                     }
+                    .font(.system(.caption, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8) // Guarantees all 4 buttons will squeeze to fit on SE displays
                 }
 
                 if model.isScanningDaemons || model.isRefreshingState || model.isApplyingConfig {
