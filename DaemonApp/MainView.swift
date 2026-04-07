@@ -15,6 +15,14 @@ struct MainView: View {
                     
                     Spacer()
                     
+                    // NEW: Root password input field allowing elegant privilege escalation
+                    SecureField("Root Pwd", text: $model.rootPassword)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                        .font(.system(.caption, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                    
                     Button(action: { model.isDarkTheme.toggle() }) {
                         Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
                             .foregroundColor(.primary)
@@ -82,7 +90,6 @@ struct MainView: View {
                     .background(Color.orange.opacity(0.2))
             }
 
-            // NEW: Render the Live Log instead of the Tabs when applying
             if model.showLogConsole {
                 ConsoleLogView(logText: model.liveLog)
             } else {
@@ -125,7 +132,6 @@ struct MainView: View {
     }
 }
 
-// NEW: Auto-scrolling terminal console view
 struct ConsoleLogView: View {
     let logText: String
     

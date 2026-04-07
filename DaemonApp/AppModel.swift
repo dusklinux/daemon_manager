@@ -53,10 +53,16 @@ final class AppModel: ObservableObject {
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
     
+    // NEW: Persistent root password state for privilege escalation
+    @Published var rootPassword = UserDefaults.standard.string(forKey: "rootPassword") ?? "alpine" {
+        didSet {
+            UserDefaults.standard.set(rootPassword, forKey: "rootPassword")
+        }
+    }
+    
     @Published private(set) var rawConfigContent: String? = nil
     @Published private(set) var targetStates: [String: Bool] = [:]
     
-    // NEW: Live Logging & Cancellation State
     @Published var applyProgressText: String? = nil
     @Published var isApplyingConfig: Bool = false
     @Published var showLogConsole: Bool = false
@@ -178,7 +184,6 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
-                // Sync run for background state
                 let result = self.posixRunSync(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
                 guard result.exitCode == 0 else {
                     failures.append("launchctl print-disabled \(domain) failed with exit code \(result.exitCode).")
@@ -232,11 +237,13 @@ final class AppModel: ObservableObject {
     func toggleDaemon(_ service: LaunchdService, enable: Bool) {
         guard canToggle(service) else { return }
 
+        let pwd = self.rootPassword
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
 
         DispatchQueue.global(qos: .userInitiated).async {
             let action = enable ? "enable" : "disable"
-            let result = self.posixRunSync(executable: self.rootlessShellPath, args: [self.daemonManagerPath, action, service.label])
+            let elevated = self.buildElevatedCommand(action: action, args: [service.label], pwd: pwd)
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
 
             guard result.exitCode == 0 else {
                 DispatchQueue.main.async {
@@ -274,7 +281,6 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Unix SIGTERM command
     func cancelApply() {
         if let pid = currentPid {
             kill(pid, SIGTERM)
@@ -288,6 +294,7 @@ final class AppModel: ObservableObject {
         guard let content = rawConfigContent else { return }
         guard daemonManagerAvailable else { return }
 
+        let pwd = self.rootPassword
         DispatchQueue.main.async {
             self.isApplyingConfig = true
             self.showLogConsole = true
@@ -307,10 +314,10 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            // NEW: Run purely asynchronously
+            let elevated = self.buildElevatedCommand(action: "apply-file", args: [tempURL.path], pwd: pwd)
             self.posixRunAsync(
-                executable: self.rootlessShellPath,
-                args: [self.daemonManagerPath, "apply-file", tempURL.path]
+                executable: elevated.executable,
+                args: elevated.arguments
             ) { liveText in
                 DispatchQueue.main.async {
                     self.liveLog += liveText
@@ -326,11 +333,10 @@ final class AppModel: ObservableObject {
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     
-                    if exitCode != 0 && exitCode != 15 && exitCode != 143 { // 15 is SIGTERM, 143 is SIGTERM exit status
+                    if exitCode != 0 && exitCode != 15 && exitCode != 143 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                         self.refreshState()
                     } else {
-                        // Delay hiding the console slightly on clean exit so user can read final output
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             if !self.isApplyingConfig {
                                 self.showLogConsole = false
@@ -341,6 +347,65 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // NEW: Privilege Escalation Engine
+    private func buildElevatedCommand(action: String, args: [String], pwd: String) -> (executable: String, arguments: [String]) {
+        let sudoPath = "/var/jb/usr/bin/sudo"
+        let targetCmd = " \"\(self.daemonManagerPath)\" \(action) " + args.map { "\"\($0)\"" }.joined(separator: " ")
+        
+        // Fast-path: Sudo installed (Dopamine default for power users)
+        if FileManager.default.fileExists(atPath: sudoPath) {
+            let shellCmd = "echo \"\(pwd)\" | \"\(sudoPath)\" -S \(targetCmd)"
+            return (self.rootlessShellPath, ["-c", shellCmd])
+        } else {
+            // Fallback: Use Python PTY to wrap `su` automatically and inject the password
+            let pythonExe = pythonPath
+            let pythonScript = """
+            import os, sys, pty, select
+            pw = sys.argv[1]
+            cmd = sys.argv[2:]
+            pid, fd = pty.fork()
+            if pid == 0:
+                os.execv(cmd[0], cmd)
+            else:
+                buffer = b""
+                while True:
+                    r, w, e = select.select([fd], [], [], 2.0)
+                    if not r: break
+                    try:
+                        chunk = os.read(fd, 1024)
+                        if not chunk: break
+                        buffer += chunk
+                        if b"assword" in buffer or b"Password:" in buffer:
+                            break
+                    except OSError:
+                        break
+                os.write(fd, (pw + "\\n").encode())
+                try:
+                    while True:
+                        data = os.read(fd, 1024)
+                        if not data: break
+                        sys.stdout.buffer.write(data)
+                        sys.stdout.flush()
+                except OSError:
+                    pass
+                _, status = os.waitpid(pid, 0)
+                sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8))
+            """
+            
+            let suExe = "/var/jb/usr/bin/su"
+            let suArgs = ["-c", pythonScript, pwd, suExe, "-", "root", "-c", targetCmd.trimmingCharacters(in: .whitespaces)]
+            return (pythonExe, suArgs)
+        }
+    }
+        
+    private var pythonPath: String {
+        let paths = ["/var/jb/usr/bin/python3", "/var/jb/usr/local/bin/python3", "/usr/bin/python3"]
+        for p in paths {
+            if FileManager.default.fileExists(atPath: p) { return p }
+        }
+        return "/var/jb/usr/bin/python3"
     }
 
     private func validateEnvironment() {
@@ -435,7 +500,6 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.async { self.errorMessage = message }
     }
     
-    // NEW: Fully Asynchronous POSIX Engine. Prevents Swift UI Freezes.
     private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
@@ -462,7 +526,7 @@ final class AppModel: ObservableObject {
         var pid: pid_t = 0
         let spawnStatus = posix_spawn(&pid, executable, &fileActions, nil, argv, env)
         
-        close(outPipe[1]) // Close write end in parent
+        close(outPipe[1]) 
 
         if spawnStatus != 0 {
             close(outPipe[0])
@@ -473,7 +537,6 @@ final class AppModel: ObservableObject {
         self.currentPid = pid
         let fd = outPipe[0]
         
-        // Make file descriptor non-blocking
         fcntl(fd, F_SETFL, O_NONBLOCK)
         
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
@@ -504,7 +567,6 @@ final class AppModel: ObservableObject {
         source.resume()
     }
 
-    // Synchronous wrapper for simple commands
     private func posixRunSync(executable: String, args: [String]) -> (exitCode: Int32, output: String) {
         let semaphore = DispatchSemaphore(value: 0)
         var fullOutput = ""
