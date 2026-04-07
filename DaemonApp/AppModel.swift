@@ -15,18 +15,14 @@ struct LaunchdService: Identifiable, Hashable {
     let kind: Kind
 
     var id: String {
-        if let domain, let plistPath {
-            return "\(domain)|\(plistPath)"
-        }
+        if let domain, let plistPath { return "\(domain)|\(plistPath)" }
         return "unresolved|\(label)"
     }
 
     var metadataText: String {
         switch kind {
-        case .unresolved:
-            return "Unresolved import"
-        default:
-            return "\(kind.rawValue) • \(domain ?? "unknown")"
+        case .unresolved: return "Unresolved import"
+        default: return "\(kind.rawValue) • \(domain ?? "unknown")"
         }
     }
 
@@ -54,9 +50,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     
     @Published var rootPassword = UserDefaults.standard.string(forKey: "rootPassword") ?? "alpine" {
-        didSet {
-            UserDefaults.standard.set(rootPassword, forKey: "rootPassword")
-        }
+        didSet { UserDefaults.standard.set(rootPassword, forKey: "rootPassword") }
     }
     
     @Published private(set) var rawConfigContent: String? = nil
@@ -66,15 +60,16 @@ final class AppModel: ObservableObject {
     @Published var isApplyingConfig: Bool = false
     @Published var showLogConsole: Bool = false
     @Published var liveLog: String = ""
+    
     private var currentPid: pid_t? = nil
-
     private var disabledServices: Set<DisabledServiceKey>?
     private var importedLabels: [String] = []
     private var timer: Timer?
 
     private let mobileDomain: String
     private let rootlessShellPath = "/var/jb/bin/sh"
-    private let daemonManagerPath: String
+    private var daemonManagerPath: String = ""
+    private var lastImportedPath: String? = nil
 
     init() {
         if let pw = getpwnam("mobile") {
@@ -83,36 +78,47 @@ final class AppModel: ObservableObject {
             mobileDomain = "user/501"
         }
 
-        let externalScript = "/var/jb/basebin/daemonmanager"
-        if FileManager.default.fileExists(atPath: externalScript) {
-            daemonManagerPath = externalScript
-        } else if let bundledScript = Bundle.main.path(forResource: "daemonmanager", ofType: nil) {
-            daemonManagerPath = bundledScript
-        } else {
-            daemonManagerPath = externalScript
-        }
-
+        self.daemonManagerPath = resolveScriptDependency()
         validateEnvironment()
         startRAMTimer()
         fetchAllDaemons()
         refreshState()
-        
-        let externalConfig = "/var/jb/basebin/daemon.cfg"
-        if FileManager.default.fileExists(atPath: externalConfig) {
-            importConfig(url: URL(fileURLWithPath: externalConfig))
-        } else if let bundledConfig = Bundle.main.url(forResource: "daemon", withExtension: "cfg") {
-            importConfig(url: bundledConfig)
-        }
+        loadInitialConfig()
     }
 
     deinit {
         timer?.invalidate()
+    }
+    
+    // NEW: Safely extracts bundled script to a writable, executable tmp location if missing from jb root.
+    private func resolveScriptDependency() -> String {
+        let externalPath = "/var/jb/basebin/daemonmanager"
+        if FileManager.default.fileExists(atPath: externalPath) {
+            return externalPath
+        }
+        
+        let tempPath = NSTemporaryDirectory() + "daemonmanager_bundled"
+        if let bundleURL = Bundle.main.url(forResource: "daemonmanager", withExtension: nil) {
+            try? FileManager.default.removeItem(atPath: tempPath)
+            if (try? FileManager.default.copyItem(at: bundleURL, to: URL(fileURLWithPath: tempPath))) != nil {
+                chmod(tempPath, 0o755) // Grant execution rights natively
+                return tempPath
+            }
+        }
+        return externalPath
     }
 
     func refreshAll() {
         validateEnvironment()
         fetchAllDaemons()
         refreshState()
+        
+        // NEW: Force re-read the file from disk so Filza edits reflect instantly
+        if let path = lastImportedPath, let content = try? String(contentsOfFile: path, encoding: .utf8) {
+            processConfigContent(content)
+        } else {
+            loadInitialConfig()
+        }
     }
 
     func dismissError() {
@@ -142,6 +148,7 @@ final class AppModel: ObservableObject {
         updateRAMUsage()
     }
 
+    // NEW: Outputs in MBs as requested
     private func updateRAMUsage() {
         let hostPort = mach_host_self()
         defer { mach_port_deallocate(mach_task_self_, hostPort) }
@@ -161,10 +168,10 @@ final class AppModel: ObservableObject {
         guard status == KERN_SUCCESS else { return }
 
         let freeBytes = Double(vmStats.free_count + vmStats.speculative_count) * Double(pageSize)
-        let freeGB = freeBytes / 1_073_741_824.0
+        let freeMB = freeBytes / 1_048_576.0
 
         DispatchQueue.main.async {
-            self.ramUsageText = String(format: "Free RAM: %.2f GB", freeGB)
+            self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB)
         }
     }
 
@@ -229,7 +236,6 @@ final class AppModel: ObservableObject {
 
     func toggleDaemon(_ service: LaunchdService, enable: Bool) {
         guard canToggle(service) else { return }
-
         let pwd = self.rootPassword
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
 
@@ -249,22 +255,38 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func loadInitialConfig() {
+        let externalConfig = "/var/jb/basebin/daemon.cfg"
+        if FileManager.default.fileExists(atPath: externalConfig) {
+            importConfig(url: URL(fileURLWithPath: externalConfig))
+        } else if let bundledConfig = Bundle.main.url(forResource: "daemon", withExtension: "cfg") {
+            importConfig(url: bundledConfig)
+        }
+    }
+
     func importConfig(url: URL) {
+        self.lastImportedPath = url.path
         var fileContent: String? = nil
+        
+        // Attempt to read directly or via security scope
         if let data = FileManager.default.contents(atPath: url.path) {
             fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
-        }
-        if fileContent == nil {
+        } else {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
             }
         }
 
         guard let content = fileContent else {
-            presentError("Permission Denied: Cannot read file.")
+            presentError("Permission Denied: Cannot read config file.")
             return
         }
-
+        processConfigContent(content)
+    }
+    
+    private func processConfigContent(_ content: String) {
         let parsed = parseImportedConfig(from: content)
         DispatchQueue.main.async {
             self.importedLabels = parsed.labels
@@ -274,24 +296,28 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Nuclear Root-Level Cancellation
+    // NEW: Nuclear Root Cancellation. Kills the actual target daemon, forcing the process tree to collapse.
     func cancelApply() {
         guard let pid = currentPid else { return }
         let pwd = self.rootPassword
         
         DispatchQueue.main.async {
-            self.liveLog += "\n[!] User Cancelled: Executing root SIGKILL to terminate process tree..."
+            self.liveLog += "\n[!] User Cancelled: Dispatching root kill signal..."
         }
         
-        // 1. Send local termination to the immediate Swift wrapper child
-        kill(pid, SIGTERM)
-        kill(-pid, SIGTERM)
-        
-        // 2. Eradicate the root process tree spawned via su/sudo using pkill.
-        // This is necessary because mobile user 501 cannot signal root user 0 processes directly.
         DispatchQueue.global(qos: .userInitiated).async {
-            let elevated = self.buildElevatedCommand(action: "pkill", args: ["-9", "-f", "daemonmanager"], pwd: pwd, isRaw: true)
+            // Target the script explicitly using root privileges
+            let killScript = "/var/jb/usr/bin/killall -9 daemonmanager 2>/dev/null || /usr/bin/killall -9 daemonmanager 2>/dev/null || /var/jb/usr/bin/killall -9 daemonmanager_bundled 2>/dev/null || /usr/bin/killall -9 daemonmanager_bundled 2>/dev/null"
+            let elevated = self.buildElevatedCommand(action: killScript, args: [], pwd: pwd, isRaw: true)
             self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            
+            // Safety fallback to close the local listener if the script was already dead
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+                if self.currentPid == pid {
+                    kill(pid, SIGKILL)
+                    kill(-pid, SIGKILL)
+                }
+            }
         }
     }
     
@@ -320,13 +346,12 @@ final class AppModel: ObservableObject {
                 }
             } onCompletion: { exitCode in
                 onFinish?()
-                
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     
-                    // Ignore expected termination codes (15: SIGTERM, 143: Terminated via Trap, 9: SIGKILL from pkill)
+                    // 9 & 137 are standard POSIX SIGKILL return codes triggered by our cancel function
                     if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 && exitCode != 137 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
@@ -356,7 +381,6 @@ final class AppModel: ObservableObject {
         executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
     }
 
-    // NEW: isRaw flag enables passing raw commands like pkill directly into the elevation pipeline
     private func buildElevatedCommand(action: String, args: [String], pwd: String, isRaw: Bool = false) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
         let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
@@ -364,7 +388,7 @@ final class AppModel: ObservableObject {
         
         let innerCmd: String
         if isRaw {
-            innerCmd = "\(action) \(safeArgs)"
+            innerCmd = action
         } else {
             innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         }
@@ -415,7 +439,6 @@ final class AppModel: ObservableObject {
                 _, status = os.waitpid(pid, 0)
                 sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8))
             """
-            
             let suExe = "/var/jb/usr/bin/su"
             let suArgs = ["-c", pythonScript, safePwd, suExe, "-", "root", "-c", innerCmd]
             return (pythonExe, suArgs)
