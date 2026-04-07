@@ -120,9 +120,7 @@ final class AppModel: ObservableObject {
     }
 
     func isDisabled(_ service: LaunchdService) -> Bool? {
-        guard let domain = service.domain, let disabledServices else {
-            return nil
-        }
+        guard let domain = service.domain, let disabledServices else { return nil }
         return disabledServices.contains(DisabledServiceKey(domain: domain, label: service.label))
     }
 
@@ -280,40 +278,39 @@ final class AppModel: ObservableObject {
         }
     }
     
+    // NEW: Robust Process Group & PTY Termination
     func cancelApply() {
         if let pid = currentPid {
+            // 1. Send SIGTERM so the python handler can catch it and kill the isolated PTY child
             kill(pid, SIGTERM)
+            kill(-pid, SIGTERM) // Target process group
+            
+            // 2. Schedule a merciless SIGKILL sweep 0.5s later to ensure zero zombies are left behind
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                kill(pid, SIGKILL)
+                kill(-pid, SIGKILL)
+            }
+            
             DispatchQueue.main.async {
-                self.liveLog += "\n[!] User Cancelled: Sent SIGTERM to process."
+                self.liveLog += "\n[!] User Cancelled: Force-terminating process tree..."
             }
         }
     }
     
-    func applyImportedConfig() {
-        guard let content = rawConfigContent else { return }
+    // NEW: Centralized batch execution pipeline
+    private func executeBatchOperation(action: String, args: [String], progressTextPrefix: String, onFinish: (() -> Void)? = nil) {
         guard daemonManagerAvailable else { return }
-
         let pwd = self.rootPassword
+        
         DispatchQueue.main.async {
             self.isApplyingConfig = true
             self.showLogConsole = true
-            self.liveLog = "--- STARTING DAEMONMANAGER ---\n"
-            self.applyProgressText = "Preparing Config..."
+            self.liveLog = "--- STARTING DAEMONMANAGER (\(action.uppercased())) ---\n"
+            self.applyProgressText = "\(progressTextPrefix)..."
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let tempURL = URL(fileURLWithPath: "/var/mobile/Library/Preferences/temp_daemon.cfg")
-            do {
-                try content.write(to: tempURL, atomically: true, encoding: .utf8)
-            } catch {
-                DispatchQueue.main.async { 
-                    self.liveLog += "\n[Error] Failed to write temporary config: \(error.localizedDescription)"
-                    self.isApplyingConfig = false
-                }
-                return
-            }
-
-            let elevated = self.buildElevatedCommand(action: "apply-file", args: [tempURL.path], pwd: pwd)
+            let elevated = self.buildElevatedCommand(action: action, args: args, pwd: pwd)
             self.posixRunAsync(
                 executable: elevated.executable,
                 args: elevated.arguments
@@ -321,62 +318,78 @@ final class AppModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.liveLog += liveText
                     if let range = liveText.range(of: #"\[[0-9]+/[0-9]+\]"#, options: .regularExpression) {
-                        self.applyProgressText = "Applying \(String(liveText[range]))"
+                        self.applyProgressText = "\(progressTextPrefix) \(String(liveText[range]))"
                     }
                 }
             } onCompletion: { exitCode in
-                try? FileManager.default.removeItem(at: tempURL)
+                onFinish?()
                 
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     
-                    if exitCode != 0 && exitCode != 15 && exitCode != 143 {
+                    // Ignore expected termination codes (15: SIGTERM, 143: Terminated via Trap, 9: SIGKILL)
+                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
-                        self.refreshState()
-                    } else {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            if !self.isApplyingConfig {
-                                self.showLogConsole = false
-                                self.refreshState()
-                            }
-                        }
                     }
+                    self.refreshState()
                 }
             }
         }
     }
+    
+    func applyImportedConfig() {
+        guard let content = rawConfigContent else { return }
+        let tempURL = URL(fileURLWithPath: "/var/mobile/Library/Preferences/temp_daemon.cfg")
+        
+        do {
+            try content.write(to: tempURL, atomically: true, encoding: .utf8)
+        } catch {
+            presentError("Failed to write temporary config: \(error.localizedDescription)")
+            return
+        }
 
-    // NEW: Bulletproof Privilege Escalation Engine
+        executeBatchOperation(action: "apply-file", args: [tempURL.path], progressTextPrefix: "Applying") {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+    }
+
+    func resetConfig() {
+        executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
+    }
+
     private func buildElevatedCommand(action: String, args: [String], pwd: String) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
         
         let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
         let safeArgs = args.map { "\"\($0)\"" }.joined(separator: " ")
-        
-        // Construct the inner execution string
         let innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         
         // Fast-path: Sudo installed
         if FileManager.default.fileExists(atPath: sudoPath) {
-            // FIX: Explicitly invoke the script using the jailbreak shell (`/var/jb/bin/sh`).
-            // `sudo` directly executing a script with a `#!/bin/sh` shebang on rootless iOS 
-            // throws ENOENT ("command not found") because standard `/bin/sh` is restricted.
-            // `-p ""` suppresses the interactive password prompt from polluting the log.
             let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(self.rootlessShellPath) -c '\(innerCmd)'"
             return (self.rootlessShellPath, ["-c", shellCmd])
         } else {
-            // Fallback: Python PTY wrapping `su` automatically
+            // Fallback: Python PTY with Signal Interception injection
             let pythonExe = pythonPath
             let pythonScript = """
-            import os, sys, pty, select
+            import os, sys, pty, select, signal
             pw = sys.argv[1]
             cmd = sys.argv[2:]
             pid, fd = pty.fork()
             if pid == 0:
                 os.execv(cmd[0], cmd)
             else:
+                def handle_term(signum, frame):
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except:
+                        pass
+                    sys.exit(143)
+                signal.signal(signal.SIGTERM, handle_term)
+                signal.signal(signal.SIGINT, handle_term)
+                
                 buffer = b""
                 while True:
                     r, w, e = select.select([fd], [], [], 2.0)
@@ -531,8 +544,18 @@ final class AppModel: ObservableObject {
         posix_spawn_file_actions_addclose(&fileActions, outPipe[0])
         posix_spawn_file_actions_addclose(&fileActions, outPipe[1])
 
+        var attr: posix_spawnattr_t? = nil
+        posix_spawnattr_init(&attr)
+        defer { posix_spawnattr_destroy(&attr) }
+        
+        var flags: Int16 = 0
+        posix_spawnattr_getflags(&attr, &flags)
+        // Set process group to isolate the spawn tree, allowing us to SIGKILL it entirely
+        posix_spawnattr_setflags(&attr, flags | Int16(POSIX_SPAWN_SETPGROUP))
+        posix_spawnattr_setpgroup(&attr, 0)
+
         var pid: pid_t = 0
-        let spawnStatus = posix_spawn(&pid, executable, &fileActions, nil, argv, env)
+        let spawnStatus = posix_spawn(&pid, executable, &fileActions, &attr, argv, env)
         
         close(outPipe[1]) 
 

@@ -29,38 +29,58 @@ struct MainView: View {
                     }
                 }
 
-                HStack(spacing: 12) {
-                    Button(action: { showFilePicker = true }) {
-                        Label("Import", systemImage: "square.and.arrow.down")
+                // Primary Execution Controls
+                if model.isApplyingConfig {
+                    Button(action: { model.cancelApply() }) {
+                        Label("Cancel Execution", systemImage: "xmark.octagon.fill")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(model.isApplyingConfig)
-
-                    if model.isApplyingConfig {
-                        Button(action: { model.cancelApply() }) {
-                            Label("Cancel", systemImage: "xmark.octagon.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                    } else if model.showLogConsole {
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .padding(.horizontal)
+                } else if model.showLogConsole {
+                    // Log Dismissal & Export Options
+                    HStack(spacing: 12) {
                         Button(action: { model.showLogConsole = false; model.dismissError() }) {
                             Label("Dismiss Log", systemImage: "checkmark.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.blue)
-                    } else if model.rawConfigContent != nil {
+                        
+                        if #available(iOS 16.0, *) {
+                            ShareLink(item: model.liveLog) {
+                                Label("Export Log", systemImage: "square.and.arrow.up")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                } else {
+                    // Standard Action Buttons
+                    HStack(spacing: 12) {
+                        Button(action: { showFilePicker = true }) {
+                            Label("Import", systemImage: "square.and.arrow.down")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(action: { model.resetConfig() }) {
+                            Label("Reset", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button(action: model.refreshAll) {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    
+                    // Show Apply only if a config is actively loaded into memory
+                    if model.rawConfigContent != nil {
                         Button(action: { model.applyImportedConfig() }) {
-                            Label("Apply", systemImage: "checkmark.seal.fill")
+                            Label("Apply Imported Config", systemImage: "checkmark.seal.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
                     }
-
-                    Button(action: model.refreshAll) {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(model.isApplyingConfig)
                 }
 
                 if model.isScanningDaemons || model.isRefreshingState || model.isApplyingConfig {
