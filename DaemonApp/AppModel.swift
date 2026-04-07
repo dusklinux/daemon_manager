@@ -90,21 +90,17 @@ final class AppModel: ObservableObject {
         timer?.invalidate()
     }
     
-    // NEW: Safely extracts bundled script to a writable, executable tmp location if missing from jb root.
+    // FIX 2: Stop copying to temp dirs. Use the bundle path directly.
     private func resolveScriptDependency() -> String {
         let externalPath = "/var/jb/basebin/daemonmanager"
         if FileManager.default.fileExists(atPath: externalPath) {
             return externalPath
         }
         
-        let tempPath = NSTemporaryDirectory() + "daemonmanager_bundled"
-        if let bundleURL = Bundle.main.url(forResource: "daemonmanager", withExtension: nil) {
-            try? FileManager.default.removeItem(atPath: tempPath)
-            if (try? FileManager.default.copyItem(at: bundleURL, to: URL(fileURLWithPath: tempPath))) != nil {
-                chmod(tempPath, 0o755) // Grant execution rights natively
-                return tempPath
-            }
+        if let bundlePath = Bundle.main.path(forResource: "daemonmanager", ofType: nil) {
+            return bundlePath
         }
+        
         return externalPath
     }
 
@@ -113,7 +109,6 @@ final class AppModel: ObservableObject {
         fetchAllDaemons()
         refreshState()
         
-        // NEW: Force re-read the file from disk so Filza edits reflect instantly
         if let path = lastImportedPath, let content = try? String(contentsOfFile: path, encoding: .utf8) {
             processConfigContent(content)
         } else {
@@ -148,7 +143,6 @@ final class AppModel: ObservableObject {
         updateRAMUsage()
     }
 
-    // NEW: Outputs in MBs as requested
     private func updateRAMUsage() {
         let hostPort = mach_host_self()
         defer { mach_port_deallocate(mach_task_self_, hostPort) }
@@ -268,7 +262,6 @@ final class AppModel: ObservableObject {
         self.lastImportedPath = url.path
         var fileContent: String? = nil
         
-        // Attempt to read directly or via security scope
         if let data = FileManager.default.contents(atPath: url.path) {
             fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
         } else {
@@ -296,22 +289,21 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Nuclear Root Cancellation. Kills the actual target daemon, forcing the process tree to collapse.
+    // FIX 1: Nuke the Process Group natively. 
     func cancelApply() {
         guard let pid = currentPid else { return }
         let pwd = self.rootPassword
         
         DispatchQueue.main.async {
-            self.liveLog += "\n[!] User Cancelled: Dispatching root kill signal..."
+            self.liveLog += "\n[!] User Cancelled: Dispatching root kill signal to PGID -\(pid)..."
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            // Target the script explicitly using root privileges
-            let killScript = "/var/jb/usr/bin/killall -9 daemonmanager 2>/dev/null || /usr/bin/killall -9 daemonmanager 2>/dev/null || /var/jb/usr/bin/killall -9 daemonmanager_bundled 2>/dev/null || /usr/bin/killall -9 daemonmanager_bundled 2>/dev/null"
+            // Because posix_spawn sets PGID to PID, sending SIGKILL to -pid kills the entire tree.
+            let killScript = "/var/jb/bin/kill -9 -\(pid) 2>/dev/null || /bin/kill -9 -\(pid) 2>/dev/null"
             let elevated = self.buildElevatedCommand(action: killScript, args: [], pwd: pwd, isRaw: true)
             self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
             
-            // Safety fallback to close the local listener if the script was already dead
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
                 if self.currentPid == pid {
                     kill(pid, SIGKILL)
@@ -351,7 +343,6 @@ final class AppModel: ObservableObject {
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     
-                    // 9 & 137 are standard POSIX SIGKILL return codes triggered by our cancel function
                     if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 && exitCode != 137 {
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
@@ -381,6 +372,7 @@ final class AppModel: ObservableObject {
         executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
     }
 
+    // FIX 2 (Part B): Invoke the script dynamically through /var/jb/bin/sh
     private func buildElevatedCommand(action: String, args: [String], pwd: String, isRaw: Bool = false) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
         let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
@@ -390,7 +382,8 @@ final class AppModel: ObservableObject {
         if isRaw {
             innerCmd = action
         } else {
-            innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
+            // Using the shell executable bypasses +x permission drops from Xcode/TrollStore bundling.
+            innerCmd = "\(self.rootlessShellPath) \"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
         }
         
         if FileManager.default.fileExists(atPath: sudoPath) {
