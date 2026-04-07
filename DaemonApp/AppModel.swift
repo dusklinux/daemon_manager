@@ -68,8 +68,6 @@ final class AppModel: ObservableObject {
 
     private let mobileDomain: String
     private let rootlessShellPath = "/var/jb/bin/sh"
-    
-    // NEW: Path is now dynamic, not hardcoded
     private let daemonManagerPath: String
 
     init() {
@@ -79,14 +77,13 @@ final class AppModel: ObservableObject {
             mobileDomain = "user/501"
         }
 
-        // --- NEW: SCRIPT PRECEDENCE RESOLUTION ---
         let externalScript = "/var/jb/basebin/daemonmanager"
         if FileManager.default.fileExists(atPath: externalScript) {
-            daemonManagerPath = externalScript // 1. Use external if present
+            daemonManagerPath = externalScript
         } else if let bundledScript = Bundle.main.path(forResource: "daemonmanager", ofType: nil) {
-            daemonManagerPath = bundledScript // 2. Fallback to bundled
+            daemonManagerPath = bundledScript
         } else {
-            daemonManagerPath = externalScript // 3. Failsafe default
+            daemonManagerPath = externalScript
         }
 
         validateEnvironment()
@@ -94,12 +91,11 @@ final class AppModel: ObservableObject {
         fetchAllDaemons()
         refreshState()
         
-        // --- NEW: CONFIG PRECEDENCE RESOLUTION ---
         let externalConfig = "/var/jb/basebin/daemon.cfg"
         if FileManager.default.fileExists(atPath: externalConfig) {
-            importConfig(url: URL(fileURLWithPath: externalConfig)) // 1. Auto-load external
+            importConfig(url: URL(fileURLWithPath: externalConfig))
         } else if let bundledConfig = Bundle.main.url(forResource: "daemon", withExtension: "cfg") {
-            importConfig(url: bundledConfig) // 2. Auto-load bundled
+            importConfig(url: bundledConfig)
         }
     }
 
@@ -352,7 +348,8 @@ final class AppModel: ObservableObject {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_daemon.cfg")
+            // FIX: Guaranteed writeable location for rootless mobile user. Bypasses sandboxed tmp issues entirely.
+            let tempURL = URL(fileURLWithPath: "/var/mobile/Library/Preferences/temp_daemon.cfg")
             do {
                 try content.write(to: tempURL, atomically: true, encoding: .utf8)
             } catch {
@@ -401,8 +398,6 @@ final class AppModel: ObservableObject {
 
     private func validateEnvironment() {
         let fileManager = FileManager.default
-        // FIX: Removed the strict `isExecutableFile` check.
-        // Because we pipe it through `/bin/sh`, it only needs to exist.
         let available = fileManager.fileExists(atPath: daemonManagerPath)
 
         DispatchQueue.main.async {
@@ -540,22 +535,21 @@ final class AppModel: ObservableObject {
     }
 
     private func posixRun(executable: String, args: [String], onLine: ((String) -> Void)? = nil) -> ProcessResult {
-        let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { $0.withCString(strdup) } + [nil]
+        let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer {
-            for case let pointer? in argv {
-                free(pointer)
-            }
+            for case let pointer? in argv { free(pointer) }
         }
 
-        let environment = [
-            "PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-            "LC_ALL=C"
-        ]
-        let env: [UnsafeMutablePointer<CChar>?] = environment.map { $0.withCString(strdup) } + [nil]
+        // FIX: Inject existing environment. launchctl requires XPC_SERVICE_NAME and bootstrap ports.
+        // Stripping these out causes the "1: Operation not permitted" error.
+        var envDict = ProcessInfo.processInfo.environment
+        envDict["PATH"] = "/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (envDict["PATH"] ?? "")
+        envDict["LC_ALL"] = "C"
+
+        let envStrings = envDict.map { "\($0.key)=\($0.value)" }
+        let env: [UnsafeMutablePointer<CChar>?] = envStrings.map { strdup($0) } + [nil]
         defer {
-            for case let pointer? in env {
-                free(pointer)
-            }
+            for case let pointer? in env { free(pointer) }
         }
 
         var fileActions: posix_spawn_file_actions_t? = nil

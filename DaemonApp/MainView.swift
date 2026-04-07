@@ -5,122 +5,121 @@ struct MainView: View {
     @EnvironmentObject var model: AppModel
     @State private var showFilePicker = false
 
+    // FIX: Removed NavigationStack to eliminate the massive "DaemonManager" title space.
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                VStack(spacing: 16) {
+        VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                // Header row with RAM and Dark Mode toggle
+                HStack {
                     Text(model.ramUsageText)
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
                         .foregroundColor(model.isDarkTheme ? .green : .blue)
+                    
+                    Spacer()
+                    
+                    Button(action: { model.isDarkTheme.toggle() }) {
+                        Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
+                            .foregroundColor(.primary)
+                            .imageScale(.large)
+                    }
+                }
 
-                    HStack(spacing: 12) {
-                        Button(action: { showFilePicker = true }) {
-                            Label("Import", systemImage: "square.and.arrow.down")
+                HStack(spacing: 12) {
+                    Button(action: { showFilePicker = true }) {
+                        Label("Import", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
+
+                    if model.rawConfigContent != nil {
+                        Button(action: { model.applyImportedConfig() }) {
+                            Label("Apply", systemImage: "checkmark.seal.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        
+                        Button(action: model.refreshAll) {
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
                         .buttonStyle(.bordered)
-
-                        if model.rawConfigContent != nil {
-                            Button(action: { model.applyImportedConfig() }) {
-                                Label("Apply", systemImage: "checkmark.seal.fill")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-                            
-                            Button(action: model.refreshAll) {
-                                Label("Refresh", systemImage: "arrow.clockwise")
-                            }
-                            .buttonStyle(.bordered)
-                        } else {
-                            Button(action: model.refreshAll) {
-                                Label("Refresh", systemImage: "arrow.clockwise")
-                            }
-                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(action: model.refreshAll) {
+                            Label("Refresh", systemImage: "arrow.clockwise")
                         }
+                        .buttonStyle(.borderedProminent)
                     }
+                }
 
-                    if model.isScanningDaemons || model.isRefreshingState {
-                        // NEW: Added dynamic progress text
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            
-                            if let progressText = model.applyProgressText {
-                                Text(progressText)
-                                    .font(.system(.caption, design: .monospaced, weight: .bold))
-                                    .foregroundColor(.secondary)
-                            }
+                if model.isScanningDaemons || model.isRefreshingState {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        
+                        if let progressText = model.applyProgressText {
+                            Text(progressText)
+                                .font(.system(.caption, design: .monospaced, weight: .bold))
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
-                .padding()
-                .background(Color(UIColor.secondarySystemBackground))
-
-                if let warning = model.environmentWarning {
-                    Text(warning)
-                        .font(.footnote)
-                        .foregroundColor(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.vertical, 10)
-                        .background(Color.orange.opacity(0.2))
-                }
-
-                TabView {
-                    DaemonListView(
-                        services: model.configDaemons,
-                        emptyMessage: "No config loaded. Tap 'Import'."
-                    )
-                    .tabItem {
-                        Label("Config", systemImage: "doc.text")
-                    }
-
-                    DaemonListView(
-                        services: model.allDaemons,
-                        emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
-                    )
-                    .tabItem {
-                        Label("Services", systemImage: "cpu")
-                    }
-                }
             }
-            .navigationTitle("DaemonManager")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { model.isDarkTheme.toggle() }) {
-                        Image(systemName: model.isDarkTheme ? "sun.max" : "moon")
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
-            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
-                switch result {
-                case .success(let url):
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer {
-                        if access {
-                            url.stopAccessingSecurityScopedResource()
-                        }
-                    }
-                    model.importConfig(url: url)
+            .padding()
+            .background(Color(UIColor.secondarySystemBackground))
 
-                case .failure(let error):
-                    model.errorMessage = "File import failed: \(error.localizedDescription)"
-                }
+            if let warning = model.environmentWarning {
+                Text(warning)
+                    .font(.footnote)
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.2))
             }
-            .alert(
-                "Error",
-                isPresented: Binding(
-                    get: { model.errorMessage != nil },
-                    set: { if !$0 { model.dismissError() } }
+
+            TabView {
+                DaemonListView(
+                    services: model.configDaemons,
+                    emptyMessage: "No config loaded. Tap 'Import'."
                 )
-            ) {
-                Button("OK", role: .cancel) {
-                    model.dismissError()
+                .tabItem {
+                    Label("Config", systemImage: "doc.text")
                 }
-            } message: {
-                Text(model.errorMessage ?? "")
+
+                DaemonListView(
+                    services: model.allDaemons,
+                    emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
+                )
+                .tabItem {
+                    Label("Services", systemImage: "cpu")
+                }
             }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
+            switch result {
+            case .success(let url):
+                let access = url.startAccessingSecurityScopedResource()
+                defer {
+                    if access {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                model.importConfig(url: url)
+
+            case .failure(let error):
+                model.errorMessage = "File import failed: \(error.localizedDescription)"
+            }
+        }
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { model.errorMessage != nil },
+                set: { if !$0 { model.dismissError() } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                model.dismissError()
+            }
+        } message: {
+            Text(model.errorMessage ?? "")
         }
     }
 }
@@ -172,7 +171,6 @@ struct DaemonListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -258,7 +256,6 @@ struct DaemonRow: View {
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    
                     HStack(spacing: 6) {
                         Text(service.label)
                             .font(.system(.callout, design: .monospaced))
