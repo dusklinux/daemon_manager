@@ -15,7 +15,6 @@ struct MainView: View {
                     
                     Spacer()
                     
-                    // NEW: Root password input field allowing elegant privilege escalation
                     SecureField("Root Pwd", text: $model.rootPassword)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 120)

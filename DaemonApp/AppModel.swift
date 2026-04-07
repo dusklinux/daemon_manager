@@ -53,7 +53,6 @@ final class AppModel: ObservableObject {
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
     
-    // NEW: Persistent root password state for privilege escalation
     @Published var rootPassword = UserDefaults.standard.string(forKey: "rootPassword") ?? "alpine" {
         didSet {
             UserDefaults.standard.set(rootPassword, forKey: "rootPassword")
@@ -349,17 +348,26 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // NEW: Privilege Escalation Engine
+    // NEW: Bulletproof Privilege Escalation Engine
     private func buildElevatedCommand(action: String, args: [String], pwd: String) -> (executable: String, arguments: [String]) {
         let sudoPath = "/var/jb/usr/bin/sudo"
-        let targetCmd = " \"\(self.daemonManagerPath)\" \(action) " + args.map { "\"\($0)\"" }.joined(separator: " ")
         
-        // Fast-path: Sudo installed (Dopamine default for power users)
+        let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
+        let safeArgs = args.map { "\"\($0)\"" }.joined(separator: " ")
+        
+        // Construct the inner execution string
+        let innerCmd = "\"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
+        
+        // Fast-path: Sudo installed
         if FileManager.default.fileExists(atPath: sudoPath) {
-            let shellCmd = "echo \"\(pwd)\" | \"\(sudoPath)\" -S \(targetCmd)"
+            // FIX: Explicitly invoke the script using the jailbreak shell (`/var/jb/bin/sh`).
+            // `sudo` directly executing a script with a `#!/bin/sh` shebang on rootless iOS 
+            // throws ENOENT ("command not found") because standard `/bin/sh` is restricted.
+            // `-p ""` suppresses the interactive password prompt from polluting the log.
+            let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(self.rootlessShellPath) -c '\(innerCmd)'"
             return (self.rootlessShellPath, ["-c", shellCmd])
         } else {
-            // Fallback: Use Python PTY to wrap `su` automatically and inject the password
+            // Fallback: Python PTY wrapping `su` automatically
             let pythonExe = pythonPath
             let pythonScript = """
             import os, sys, pty, select
@@ -395,7 +403,7 @@ final class AppModel: ObservableObject {
             """
             
             let suExe = "/var/jb/usr/bin/su"
-            let suArgs = ["-c", pythonScript, pwd, suExe, "-", "root", "-c", targetCmd.trimmingCharacters(in: .whitespaces)]
+            let suArgs = ["-c", pythonScript, safePwd, suExe, "-", "root", "-c", innerCmd]
             return (pythonExe, suArgs)
         }
     }
