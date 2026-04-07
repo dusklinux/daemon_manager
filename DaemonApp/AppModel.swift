@@ -56,7 +56,7 @@ final class AppModel: ObservableObject {
     
     @Published var applyProgressText: String? = nil
     @Published var isApplyingConfig: Bool = false
-    @Published var isApplyFinished: Bool = false // NEW: Prevents log from auto-closing
+    @Published var isApplyFinished: Bool = false 
     @Published var liveLog: String = ""
     private var currentPid: pid_t? = nil
 
@@ -268,8 +268,6 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // FIX: Forcefully kill the process with SIGKILL (9) instead of SIGTERM (15).
-    // Bash cannot trap or ignore SIGKILL. The script will die instantly.
     func cancelApply() {
         if let pid = currentPid {
             kill(pid, SIGKILL)
@@ -279,7 +277,6 @@ final class AppModel: ObservableObject {
         }
     }
     
-    // NEW: Dismisses the log view and resets the state so the user can try again
     func dismissLog() {
         DispatchQueue.main.async {
             self.isApplyingConfig = false
@@ -325,10 +322,9 @@ final class AppModel: ObservableObject {
             } onCompletion: { exitCode in
                 try? FileManager.default.removeItem(at: tempURL)
                 
-                // FIX: Do not auto-close the log. Set isApplyFinished = true and wait for user.
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
-                    if exitCode != 0 && exitCode != 9 { // 9 is SIGKILL (User Cancelled)
+                    if exitCode != 0 && exitCode != 9 { 
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
                     self.applyProgressText = exitCode == 0 ? "Success!" : (exitCode == 9 ? "Cancelled" : "Failed")
@@ -431,6 +427,7 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.async { self.errorMessage = message }
     }
     
+    // NEW: Dual-Thread Asynchronous Engine to prevent ARC crashes and UI Freezes
     private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
@@ -465,35 +462,38 @@ final class AppModel: ObservableObject {
             return
         }
 
-        self.currentPid = pid
+        // Store PID safely for Cancel operations
+        DispatchQueue.main.async { self.currentPid = pid }
+        
         let fd = outPipe[0]
-        fcntl(fd, F_SETFL, O_NONBLOCK)
-        
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
-        
-        source.setEventHandler {
+
+        // Thread 1: Streams output live without crashing ARC
+        DispatchQueue.global(qos: .background).async {
             var buffer = [UInt8](repeating: 0, count: 4096)
-            let bytesRead = read(fd, &buffer, buffer.count)
-            
-            if bytesRead > 0 {
-                let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
-                onOutput(text)
-            } else if bytesRead == 0 {
-                source.cancel()
+            while true {
+                let bytesRead = read(fd, &buffer, buffer.count)
+                if bytesRead > 0 {
+                    let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
+                    onOutput(text)
+                } else {
+                    break
+                }
             }
         }
-        
-        source.setCancelHandler {
-            close(fd)
+
+        // Thread 2: Blocks until script exits, then severs the pipe
+        DispatchQueue.global(qos: .userInitiated).async {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
             let finalCode = self.decodeWaitStatus(status)
+
+            close(fd) // Forcefully unblock Thread 1
+
             DispatchQueue.main.async {
                 self.currentPid = nil
                 onCompletion(finalCode)
             }
         }
-        source.resume()
     }
 
     private func posixRunSync(executable: String, args: [String]) -> (exitCode: Int32, output: String) {
