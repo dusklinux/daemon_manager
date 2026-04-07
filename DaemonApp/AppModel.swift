@@ -23,8 +23,10 @@ struct LaunchdService: Identifiable, Hashable {
 
     var metadataText: String {
         switch kind {
-        case .unresolved: return "Unresolved import"
-        default: return "\(kind.rawValue) • \(domain ?? "unknown")"
+        case .unresolved:
+            return "Unresolved import"
+        default:
+            return "\(kind.rawValue) • \(domain ?? "unknown")"
         }
     }
 
@@ -54,9 +56,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var rawConfigContent: String? = nil
     @Published private(set) var targetStates: [String: Bool] = [:]
     
+    // NEW: Live Logging & Cancellation State
     @Published var applyProgressText: String? = nil
     @Published var isApplyingConfig: Bool = false
-    @Published var isApplyFinished: Bool = false 
     @Published var liveLog: String = ""
     private var currentPid: pid_t? = nil
 
@@ -112,7 +114,9 @@ final class AppModel: ObservableObject {
     }
 
     func isDisabled(_ service: LaunchdService) -> Bool? {
-        guard let domain = service.domain, let disabledServices else { return nil }
+        guard let domain = service.domain, let disabledServices else {
+            return nil
+        }
         return disabledServices.contains(DisabledServiceKey(domain: domain, label: service.label))
     }
 
@@ -173,6 +177,7 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
+                // Sync run for background state
                 let result = self.posixRunSync(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
                 guard result.exitCode == 0 else {
                     failures.append("launchctl print-disabled \(domain) failed with exit code \(result.exitCode).")
@@ -268,21 +273,13 @@ final class AppModel: ObservableObject {
         }
     }
     
+    // NEW: Unix SIGTERM command
     func cancelApply() {
         if let pid = currentPid {
-            kill(pid, SIGKILL)
+            kill(pid, SIGTERM)
             DispatchQueue.main.async {
-                self.liveLog += "\n\n[!] USER CANCELLED: Sent SIGKILL to forcefully terminate process."
+                self.liveLog += "\n[!] User Cancelled: Sent SIGTERM to process."
             }
-        }
-    }
-    
-    func dismissLog() {
-        DispatchQueue.main.async {
-            self.isApplyingConfig = false
-            self.isApplyFinished = false
-            self.liveLog = ""
-            self.applyProgressText = nil
         }
     }
     
@@ -292,7 +289,6 @@ final class AppModel: ObservableObject {
 
         DispatchQueue.main.async {
             self.isApplyingConfig = true
-            self.isApplyFinished = false
             self.liveLog = "--- STARTING DAEMONMANAGER ---\n"
             self.applyProgressText = "Preparing Config..."
         }
@@ -304,11 +300,12 @@ final class AppModel: ObservableObject {
             } catch {
                 DispatchQueue.main.async { 
                     self.liveLog += "\n[Error] Failed to write temporary config: \(error.localizedDescription)"
-                    self.isApplyFinished = true
+                    self.isApplyingConfig = false
                 }
                 return
             }
 
+            // NEW: Run purely asynchronously
             self.posixRunAsync(
                 executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, "apply-file", tempURL.path]
@@ -324,12 +321,16 @@ final class AppModel: ObservableObject {
                 
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
-                    if exitCode != 0 && exitCode != 9 { 
+                    if exitCode != 0 && exitCode != 15 { // 15 is SIGTERM
                         self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                     }
-                    self.applyProgressText = exitCode == 0 ? "Success!" : (exitCode == 9 ? "Cancelled" : "Failed")
-                    self.isApplyFinished = true
-                    self.refreshState()
+                    self.applyProgressText = nil
+                    
+                    // Delay hiding the console slightly so user can read the final output
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        self.isApplyingConfig = false
+                        self.refreshState()
+                    }
                 }
             }
         }
@@ -427,7 +428,7 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.async { self.errorMessage = message }
     }
     
-    // NEW: Dual-Thread Asynchronous Engine to prevent ARC crashes and UI Freezes
+    // NEW: Fully Asynchronous POSIX Engine. Prevents Swift UI Freezes.
     private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
@@ -454,7 +455,7 @@ final class AppModel: ObservableObject {
         var pid: pid_t = 0
         let spawnStatus = posix_spawn(&pid, executable, &fileActions, nil, argv, env)
         
-        close(outPipe[1])
+        close(outPipe[1]) // Close write end in parent
 
         if spawnStatus != 0 {
             close(outPipe[0])
@@ -462,40 +463,41 @@ final class AppModel: ObservableObject {
             return
         }
 
-        // Store PID safely for Cancel operations
-        DispatchQueue.main.async { self.currentPid = pid }
-        
+        self.currentPid = pid
         let fd = outPipe[0]
-
-        // Thread 1: Streams output live without crashing ARC
-        DispatchQueue.global(qos: .background).async {
+        
+        // Make file descriptor non-blocking
+        fcntl(fd, F_SETFL, O_NONBLOCK)
+        
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
+        
+        source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 4096)
-            while true {
-                let bytesRead = read(fd, &buffer, buffer.count)
-                if bytesRead > 0 {
-                    let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
-                    onOutput(text)
-                } else {
-                    break
-                }
+            let bytesRead = read(fd, &buffer, buffer.count)
+            
+            if bytesRead > 0 {
+                let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
+                onOutput(text)
+            } else if bytesRead == 0 {
+                source.cancel()
             }
         }
-
-        // Thread 2: Blocks until script exits, then severs the pipe
-        DispatchQueue.global(qos: .userInitiated).async {
+        
+        source.setCancelHandler {
+            close(fd)
             var status: Int32 = 0
             waitpid(pid, &status, 0)
             let finalCode = self.decodeWaitStatus(status)
-
-            close(fd) // Forcefully unblock Thread 1
-
             DispatchQueue.main.async {
                 self.currentPid = nil
                 onCompletion(finalCode)
             }
         }
+        
+        source.resume()
     }
 
+    // Synchronous wrapper for simple commands
     private func posixRunSync(executable: String, args: [String]) -> (exitCode: Int32, output: String) {
         let semaphore = DispatchSemaphore(value: 0)
         var fullOutput = ""
@@ -507,6 +509,7 @@ final class AppModel: ObservableObject {
             finalCode = code
             semaphore.signal()
         }
+        
         semaphore.wait()
         return (finalCode, fullOutput)
     }

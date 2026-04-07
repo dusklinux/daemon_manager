@@ -29,19 +29,12 @@ struct MainView: View {
                     .buttonStyle(.bordered)
                     .disabled(model.isApplyingConfig)
 
-                    // FIX: Dynamic Cancel -> Dismiss State Machine
                     if model.isApplyingConfig {
-                        Button(action: {
-                            if model.isApplyFinished {
-                                model.dismissLog()
-                            } else {
-                                model.cancelApply()
-                            }
-                        }) {
-                            Label(model.isApplyFinished ? "Dismiss" : "Cancel", systemImage: model.isApplyFinished ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                        Button(action: { model.cancelApply() }) {
+                            Label("Cancel", systemImage: "xmark.octagon.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(model.isApplyFinished ? .blue : .red)
+                        .tint(.red)
                     } else if model.rawConfigContent != nil {
                         Button(action: { model.applyImportedConfig() }) {
                             Label("Apply", systemImage: "checkmark.seal.fill")
@@ -59,10 +52,8 @@ struct MainView: View {
 
                 if model.isScanningDaemons || model.isRefreshingState || model.isApplyingConfig {
                     HStack(spacing: 8) {
-                        if !model.isApplyFinished {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
+                        ProgressView()
+                            .controlSize(.small)
                         
                         if let progressText = model.applyProgressText {
                             Text(progressText)
@@ -85,6 +76,7 @@ struct MainView: View {
                     .background(Color.orange.opacity(0.2))
             }
 
+            // NEW: Render the Live Log instead of the Tabs when applying
             if model.isApplyingConfig {
                 ConsoleLogView(logText: model.liveLog)
             } else {
@@ -127,6 +119,7 @@ struct MainView: View {
     }
 }
 
+// NEW: Auto-scrolling terminal console view
 struct ConsoleLogView: View {
     let logText: String
     

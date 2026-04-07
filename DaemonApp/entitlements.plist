@@ -8,11 +8,5 @@
     <true/>
     <key>com.apple.private.security.no-sandbox</key>
     <true/>
-    <key>com.apple.private.xpc.launchd.manager</key>
-    <true/>
-    <key>com.apple.private.xpc.launchd.app-server</key>
-    <true/>
-    <key>com.apple.private.xpc.launchd.service-tracker</key>
-    <true/>
 </dict>
 </plist>
