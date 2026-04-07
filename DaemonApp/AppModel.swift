@@ -40,11 +40,6 @@ private struct DisabledServiceKey: Hashable {
     let label: String
 }
 
-private struct ProcessResult {
-    let exitCode: Int32
-    let output: String
-}
-
 final class AppModel: ObservableObject {
     @Published private(set) var configDaemons: [LaunchdService] = []
     @Published private(set) var allDaemons: [LaunchdService] = []
@@ -60,7 +55,12 @@ final class AppModel: ObservableObject {
     
     @Published private(set) var rawConfigContent: String? = nil
     @Published private(set) var targetStates: [String: Bool] = [:]
+    
+    // NEW: Live Logging & Cancellation State
     @Published var applyProgressText: String? = nil
+    @Published var isApplyingConfig: Bool = false
+    @Published var liveLog: String = ""
+    private var currentPid: pid_t? = nil
 
     private var disabledServices: Set<DisabledServiceKey>?
     private var importedLabels: [String] = []
@@ -117,29 +117,17 @@ final class AppModel: ObservableObject {
         guard let domain = service.domain, let disabledServices else {
             return nil
         }
-
         return disabledServices.contains(DisabledServiceKey(domain: domain, label: service.label))
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        daemonManagerAvailable &&
-        service.domain != nil &&
-        disabledServices != nil
+        daemonManagerAvailable && service.domain != nil && disabledServices != nil
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
-        if !daemonManagerAvailable {
-            return "Missing script dependency at: \(daemonManagerPath)"
-        }
-
-        if service.domain == nil {
-            return "This imported label could not be resolved to a scanned launchd plist."
-        }
-
-        if disabledServices == nil {
-            return "Current launchd disabled-state has not finished loading yet."
-        }
-
+        if !daemonManagerAvailable { return "Missing script dependency at: \(daemonManagerPath)" }
+        if service.domain == nil { return "This imported label could not be resolved." }
+        if disabledServices == nil { return "Current launchd disabled-state has not finished loading." }
         return nil
     }
 
@@ -158,9 +146,7 @@ final class AppModel: ObservableObject {
         guard host_page_size(hostPort, &pageSize) == KERN_SUCCESS else { return }
 
         var vmStats = vm_statistics64()
-        var count = mach_msg_type_number_t(
-            MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride
-        )
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
 
         let status = withUnsafeMutablePointer(to: &vmStats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
@@ -183,9 +169,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshState(completion: (() -> Void)? = nil) {
-        DispatchQueue.main.async {
-            self.isRefreshingState = true
-        }
+        DispatchQueue.main.async { self.isRefreshingState = true }
 
         DispatchQueue.global(qos: .userInitiated).async {
             let domains = ["system", self.mobileDomain]
@@ -193,43 +177,28 @@ final class AppModel: ObservableObject {
             var failures: [String] = []
 
             for domain in domains {
-                let result = self.posixRun(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
-
+                // Sync run for background state
+                let result = self.posixRunSync(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
                 guard result.exitCode == 0 else {
-                    let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let message = detail.isEmpty
-                        ? "launchctl print-disabled \(domain) failed with exit code \(result.exitCode)."
-                        : "launchctl print-disabled \(domain) failed:\n\(detail)"
-                    failures.append(message)
+                    failures.append("launchctl print-disabled \(domain) failed with exit code \(result.exitCode).")
                     continue
                 }
-
                 merged.formUnion(self.parseDisabledServices(from: result.output, domain: domain))
             }
 
             DispatchQueue.main.async {
-                if failures.isEmpty {
-                    self.disabledServices = merged
-                }
-
+                if failures.isEmpty { self.disabledServices = merged }
                 self.isRefreshingState = false
-
-                if !failures.isEmpty {
-                    self.errorMessage = failures.joined(separator: "\n\n")
-                }
-
+                if !failures.isEmpty { self.errorMessage = failures.joined(separator: "\n\n") }
                 completion?()
             }
         }
     }
 
     func fetchAllDaemons() {
-        DispatchQueue.main.async {
-            self.isScanningDaemons = true
-        }
+        DispatchQueue.main.async { self.isScanningDaemons = true }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let fileManager = FileManager.default
             let locations: [(path: String, kind: LaunchdService.Kind, domain: String)] = [
                 ("/System/Library/LaunchAgents", .agent, self.mobileDomain),
                 ("/System/Library/LaunchDaemons", .daemon, "system"),
@@ -241,19 +210,10 @@ final class AppModel: ObservableObject {
 
             for location in locations {
                 let directoryURL = URL(fileURLWithPath: location.path, isDirectory: true)
-
-                guard let fileURLs = try? fileManager.contentsOfDirectory(
-                    at: directoryURL,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsHiddenFiles]
-                ) else {
-                    continue
-                }
+                guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
 
                 for fileURL in fileURLs where fileURL.pathExtension == "plist" {
-                    guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else {
-                        continue
-                    }
+                    guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else { continue }
                     servicesByID[service.id] = service
                 }
             }
@@ -269,51 +229,30 @@ final class AppModel: ObservableObject {
     }
 
     func toggleDaemon(_ service: LaunchdService, enable: Bool) {
-        guard canToggle(service) else {
-            if let reason = toggleUnavailableReason(service) {
-                presentError(reason)
-            }
-            return
-        }
+        guard canToggle(service) else { return }
 
-        DispatchQueue.main.async {
-            self.isProcessing.insert(service.id)
-        }
+        DispatchQueue.main.async { self.isProcessing.insert(service.id) }
 
         DispatchQueue.global(qos: .userInitiated).async {
             let action = enable ? "enable" : "disable"
-            
-            let result = self.posixRun(
-                executable: self.rootlessShellPath,
-                args: [self.daemonManagerPath, action, service.label]
-            )
+            let result = self.posixRunSync(executable: self.rootlessShellPath, args: [self.daemonManagerPath, action, service.label])
 
             guard result.exitCode == 0 else {
-                let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                let message = detail.isEmpty
-                    ? "Failed to \(action) \(service.label) (exit code \(result.exitCode))."
-                    : "Failed to \(action) \(service.label):\n\(detail)"
-
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
-                    self.errorMessage = message
+                    self.errorMessage = "Failed to \(action) \(service.label) (exit code \(result.exitCode)).\n\(result.output)"
                 }
                 return
             }
-
-            self.refreshState {
-                self.isProcessing.remove(service.id)
-            }
+            self.refreshState { self.isProcessing.remove(service.id) }
         }
     }
 
     func importConfig(url: URL) {
         var fileContent: String? = nil
-        
         if let data = FileManager.default.contents(atPath: url.path) {
             fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
         }
-        
         if fileContent == nil {
             if let data = try? Data(contentsOf: url) {
                 fileContent = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
@@ -321,12 +260,11 @@ final class AppModel: ObservableObject {
         }
 
         guard let content = fileContent else {
-            presentError("Permission Denied: TrollStore apps cannot read sandboxed iCloud files. Please move 'daemon.cfg' directly to your 'On My iPhone > Downloads' folder and try again.")
+            presentError("Permission Denied: Cannot read file.")
             return
         }
 
         let parsed = parseImportedConfig(from: content)
-
         DispatchQueue.main.async {
             self.importedLabels = parsed.labels
             self.targetStates = parsed.targets
@@ -335,71 +273,71 @@ final class AppModel: ObservableObject {
         }
     }
     
+    // NEW: Unix SIGTERM command
+    func cancelApply() {
+        if let pid = currentPid {
+            kill(pid, SIGTERM)
+            DispatchQueue.main.async {
+                self.liveLog += "\n[!] User Cancelled: Sent SIGTERM to process."
+            }
+        }
+    }
+    
     func applyImportedConfig() {
         guard let content = rawConfigContent else { return }
-        guard daemonManagerAvailable else {
-            presentError("Missing executable dependency: \(daemonManagerPath)")
-            return
-        }
+        guard daemonManagerAvailable else { return }
 
         DispatchQueue.main.async {
-            self.isRefreshingState = true
+            self.isApplyingConfig = true
+            self.liveLog = "--- STARTING DAEMONMANAGER ---\n"
             self.applyProgressText = "Preparing Config..."
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // FIX: Guaranteed writeable location for rootless mobile user. Bypasses sandboxed tmp issues entirely.
             let tempURL = URL(fileURLWithPath: "/var/mobile/Library/Preferences/temp_daemon.cfg")
             do {
                 try content.write(to: tempURL, atomically: true, encoding: .utf8)
             } catch {
-                self.presentError("Failed to write temporary config file: \(error.localizedDescription)")
                 DispatchQueue.main.async { 
-                    self.isRefreshingState = false 
-                    self.applyProgressText = nil
+                    self.liveLog += "\n[Error] Failed to write temporary config: \(error.localizedDescription)"
+                    self.isApplyingConfig = false
                 }
                 return
             }
 
-            let result = self.posixRun(
+            // NEW: Run purely asynchronously
+            self.posixRunAsync(
                 executable: self.rootlessShellPath,
                 args: [self.daemonManagerPath, "apply-file", tempURL.path]
-            ) { [weak self] liveLine in
-                if let range = liveLine.range(of: #"\[[0-9]+/[0-9]+\]"#, options: .regularExpression) {
-                    let progressStr = String(liveLine[range])
-                    DispatchQueue.main.async {
-                        self?.applyProgressText = "Applying \(progressStr)"
+            ) { liveText in
+                DispatchQueue.main.async {
+                    self.liveLog += liveText
+                    if let range = liveText.range(of: #"\[[0-9]+/[0-9]+\]"#, options: .regularExpression) {
+                        self.applyProgressText = "Applying \(String(liveText[range]))"
+                    }
+                }
+            } onCompletion: { exitCode in
+                try? FileManager.default.removeItem(at: tempURL)
+                
+                DispatchQueue.main.async {
+                    self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
+                    if exitCode != 0 && exitCode != 15 { // 15 is SIGTERM
+                        self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
+                    }
+                    self.applyProgressText = nil
+                    
+                    // Delay hiding the console slightly so user can read the final output
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        self.isApplyingConfig = false
+                        self.refreshState()
                     }
                 }
             }
-
-            try? FileManager.default.removeItem(at: tempURL)
-
-            guard result.exitCode == 0 else {
-                let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                let message = detail.isEmpty
-                    ? "Failed to apply config batch (exit code \(result.exitCode))."
-                    : "Failed to apply config:\n\(detail)"
-
-                DispatchQueue.main.async {
-                    self.errorMessage = message
-                    self.isRefreshingState = false
-                    self.applyProgressText = nil
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                self.applyProgressText = nil
-            }
-            self.refreshState()
         }
     }
 
     private func validateEnvironment() {
-        let fileManager = FileManager.default
-        let available = fileManager.fileExists(atPath: daemonManagerPath)
-
+        let available = FileManager.default.fileExists(atPath: daemonManagerPath)
         DispatchQueue.main.async {
             self.daemonManagerAvailable = available
             self.environmentWarning = available ? nil : "Missing script dependency at: \(self.daemonManagerPath)"
@@ -407,11 +345,7 @@ final class AppModel: ObservableObject {
     }
 
     private func resolveImportedConfig() {
-        guard !importedLabels.isEmpty else {
-            configDaemons = []
-            return
-        }
-
+        guard !importedLabels.isEmpty else { configDaemons = []; return }
         let grouped = Dictionary(grouping: allDaemons, by: \.label)
         var resolved: [LaunchdService] = []
         var seen = Set<String>()
@@ -428,7 +362,6 @@ final class AppModel: ObservableObject {
                 }
             }
         }
-
         configDaemons = resolved
     }
 
@@ -439,235 +372,151 @@ final class AppModel: ObservableObject {
 
         for rawLine in content.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-
             guard !line.isEmpty, !line.hasPrefix("#") else { continue }
-
             let fields = line.split(whereSeparator: \.isWhitespace)
             guard let firstToken = fields.first else { continue }
 
             let label = String(firstToken)
             if seen.insert(label).inserted {
                 labels.append(label)
-                
                 if fields.count >= 2 {
                     let mode = String(fields[1]).lowercased()
-                    if ["yes", "off", "disable", "disabled"].contains(mode) {
-                        targets[label] = false
-                    } else if ["no", "on", "enable", "enabled"].contains(mode) {
-                        targets[label] = true
-                    }
+                    if ["yes", "off", "disable", "disabled"].contains(mode) { targets[label] = false }
+                    else if ["no", "on", "enable", "enabled"].contains(mode) { targets[label] = true }
                 }
             }
         }
-
         return (labels, targets)
     }
 
     private func parseDisabledServices(from output: String, domain: String) -> Set<DisabledServiceKey> {
         var disabled = Set<DisabledServiceKey>()
         let trimSet = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;"))
-
         for rawLine in output.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: trimSet)
             let parts = line.components(separatedBy: "\"")
-
-            guard parts.count >= 3 else { continue }
-            guard let arrowRange = line.range(of: "=>") else { continue }
-
+            guard parts.count >= 3, let arrowRange = line.range(of: "=>") else { continue }
             let label = parts[1]
-            let rawValue = line[arrowRange.upperBound...]
-                .trimmingCharacters(in: trimSet)
-                .lowercased()
-
+            let rawValue = line[arrowRange.upperBound...].trimmingCharacters(in: trimSet).lowercased()
             if rawValue == "true" || rawValue == "disabled" {
                 disabled.insert(DisabledServiceKey(domain: domain, label: label))
             }
         }
-
         return disabled
     }
 
     private func loadService(from plistURL: URL, kind: LaunchdService.Kind, domain: String) -> LaunchdService? {
-        guard let data = try? Data(contentsOf: plistURL) else {
-            return nil
-        }
-
-        guard
-            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        else {
-            return nil
-        }
-
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return nil }
         let fallbackLabel = plistURL.deletingPathExtension().lastPathComponent
         let trimmedLabel = (plist["Label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = (trimmedLabel?.isEmpty == false) ? trimmedLabel! : fallbackLabel
-
-        return LaunchdService(
-            label: label,
-            plistPath: plistURL.path,
-            domain: domain,
-            kind: kind
-        )
+        return LaunchdService(label: label, plistPath: plistURL.path, domain: domain, kind: kind)
     }
 
     private static func sortServices(_ lhs: LaunchdService, _ rhs: LaunchdService) -> Bool {
         let lhsLabel = lhs.label.localizedLowercase
         let rhsLabel = rhs.label.localizedLowercase
-
-        if lhsLabel != rhsLabel {
-            return lhsLabel < rhsLabel
-        }
-
+        if lhsLabel != rhsLabel { return lhsLabel < rhsLabel }
         let lhsDomain = lhs.domain ?? ""
         let rhsDomain = rhs.domain ?? ""
-
-        if lhsDomain != rhsDomain {
-            return lhsDomain < rhsDomain
-        }
-
+        if lhsDomain != rhsDomain { return lhsDomain < rhsDomain }
         return (lhs.plistPath ?? "") < (rhs.plistPath ?? "")
     }
 
     private func presentError(_ message: String) {
-        DispatchQueue.main.async {
-            self.errorMessage = message
-        }
+        DispatchQueue.main.async { self.errorMessage = message }
     }
-
-    private func posixRun(executable: String, args: [String], onLine: ((String) -> Void)? = nil) -> ProcessResult {
+    
+    // NEW: Fully Asynchronous POSIX Engine. Prevents Swift UI Freezes.
+    private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
-        defer {
-            for case let pointer? in argv { free(pointer) }
-        }
+        defer { for case let pointer? in argv { free(pointer) } }
 
-        // FIX: Inject existing environment. launchctl requires XPC_SERVICE_NAME and bootstrap ports.
-        // Stripping these out causes the "1: Operation not permitted" error.
         var envDict = ProcessInfo.processInfo.environment
         envDict["PATH"] = "/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (envDict["PATH"] ?? "")
         envDict["LC_ALL"] = "C"
-
         let envStrings = envDict.map { "\($0.key)=\($0.value)" }
         let env: [UnsafeMutablePointer<CChar>?] = envStrings.map { strdup($0) } + [nil]
-        defer {
-            for case let pointer? in env { free(pointer) }
-        }
+        defer { for case let pointer? in env { free(pointer) } }
 
         var fileActions: posix_spawn_file_actions_t? = nil
-        let initStatus = posix_spawn_file_actions_init(&fileActions)
-        guard initStatus == 0 else {
-            return ProcessResult(
-                exitCode: -1,
-                output: "posix_spawn_file_actions_init failed: \(initStatus)"
-            )
-        }
-        defer {
-            posix_spawn_file_actions_destroy(&fileActions)
-        }
+        posix_spawn_file_actions_init(&fileActions)
+        defer { posix_spawn_file_actions_destroy(&fileActions) }
 
         var outPipe: [Int32] = [-1, -1]
-        guard pipe(&outPipe) == 0 else {
-            return ProcessResult(
-                exitCode: -1,
-                output: "pipe() failed: \(String(cString: strerror(errno)))"
-            )
-        }
-        defer {
-            if outPipe[0] != -1 { close(outPipe[0]) }
-            if outPipe[1] != -1 { close(outPipe[1]) }
-        }
-
-        guard posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDOUT_FILENO) == 0 else {
-            return ProcessResult(exitCode: -1, output: "posix_spawn_file_actions_adddup2(stdout) failed")
-        }
-
-        guard posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDERR_FILENO) == 0 else {
-            return ProcessResult(exitCode: -1, output: "posix_spawn_file_actions_adddup2(stderr) failed")
-        }
-
-        guard posix_spawn_file_actions_addclose(&fileActions, outPipe[0]) == 0 else {
-            return ProcessResult(exitCode: -1, output: "posix_spawn_file_actions_addclose(read) failed")
-        }
-
-        guard posix_spawn_file_actions_addclose(&fileActions, outPipe[1]) == 0 else {
-            return ProcessResult(exitCode: -1, output: "posix_spawn_file_actions_addclose(write) failed")
-        }
+        pipe(&outPipe)
+        
+        posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDOUT_FILENO)
+        posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDERR_FILENO)
+        posix_spawn_file_actions_addclose(&fileActions, outPipe[0])
+        posix_spawn_file_actions_addclose(&fileActions, outPipe[1])
 
         var pid: pid_t = 0
         let spawnStatus = posix_spawn(&pid, executable, &fileActions, nil, argv, env)
-        guard spawnStatus == 0 else {
-            return ProcessResult(
-                exitCode: Int32(spawnStatus),
-                output: "posix_spawn failed: \(String(cString: strerror(spawnStatus)))"
-            )
+        
+        close(outPipe[1]) // Close write end in parent
+
+        if spawnStatus != 0 {
+            close(outPipe[0])
+            onCompletion(-1)
+            return
         }
 
-        close(outPipe[1])
-        outPipe[1] = -1
-
-        var outputData = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        var leftover = ""
-
-        while true {
-            let bytesRead = read(outPipe[0], &buffer, buffer.count)
-
+        self.currentPid = pid
+        let fd = outPipe[0]
+        
+        // Make file descriptor non-blocking
+        fcntl(fd, F_SETFL, O_NONBLOCK)
+        
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
+        
+        source.setEventHandler {
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            let bytesRead = read(fd, &buffer, buffer.count)
+            
             if bytesRead > 0 {
-                let chunk = Data(buffer[..<bytesRead])
-                outputData.append(chunk)
-
-                if let onLine = onLine {
-                    let chunkStr = String(decoding: chunk, as: UTF8.self)
-                    let lines = (leftover + chunkStr).components(separatedBy: .newlines)
-                    if lines.count > 1 {
-                        for i in 0..<(lines.count - 1) {
-                            onLine(lines[i])
-                        }
-                        leftover = lines.last ?? ""
-                    } else {
-                        leftover += chunkStr
-                    }
-                }
+                let text = String(decoding: buffer[..<bytesRead], as: UTF8.self)
+                onOutput(text)
             } else if bytesRead == 0 {
-                break
-            } else if errno == EINTR {
-                continue
-            } else {
-                break
+                source.cancel()
             }
         }
         
-        if let onLine = onLine, !leftover.isEmpty {
-            onLine(leftover)
-        }
-
-        let output = String(decoding: outputData, as: UTF8.self)
-
-        close(outPipe[0])
-        outPipe[0] = -1
-
-        var waitStatus: Int32 = 0
-        while waitpid(pid, &waitStatus, 0) == -1 {
-            if errno == EINTR {
-                continue
+        source.setCancelHandler {
+            close(fd)
+            var status: Int32 = 0
+            waitpid(pid, &status, 0)
+            let finalCode = self.decodeWaitStatus(status)
+            DispatchQueue.main.async {
+                self.currentPid = nil
+                onCompletion(finalCode)
             }
-
-            return ProcessResult(
-                exitCode: -1,
-                output: output + "\nwaitpid() failed: \(String(cString: strerror(errno)))"
-            )
         }
+        
+        source.resume()
+    }
 
-        return ProcessResult(
-            exitCode: decodeWaitStatus(waitStatus),
-            output: output
-        )
+    // Synchronous wrapper for simple commands
+    private func posixRunSync(executable: String, args: [String]) -> (exitCode: Int32, output: String) {
+        let semaphore = DispatchSemaphore(value: 0)
+        var fullOutput = ""
+        var finalCode: Int32 = -1
+        
+        posixRunAsync(executable: executable, args: args) { text in
+            fullOutput += text
+        } onCompletion: { code in
+            finalCode = code
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return (finalCode, fullOutput)
     }
 
     private func decodeWaitStatus(_ status: Int32) -> Int32 {
         let signal = status & 0x7F
-        if signal == 0 {
-            return (status >> 8) & 0xFF
-        }
+        if signal == 0 { return (status >> 8) & 0xFF }
         return 128 + signal
     }
 }

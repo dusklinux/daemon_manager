@@ -5,11 +5,9 @@ struct MainView: View {
     @EnvironmentObject var model: AppModel
     @State private var showFilePicker = false
 
-    // FIX: Removed NavigationStack to eliminate the massive "DaemonManager" title space.
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
-                // Header row with RAM and Dark Mode toggle
                 HStack {
                     Text(model.ramUsageText)
                         .font(.system(.subheadline, design: .monospaced, weight: .bold))
@@ -29,27 +27,30 @@ struct MainView: View {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.bordered)
+                    .disabled(model.isApplyingConfig)
 
-                    if model.rawConfigContent != nil {
+                    if model.isApplyingConfig {
+                        Button(action: { model.cancelApply() }) {
+                            Label("Cancel", systemImage: "xmark.octagon.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    } else if model.rawConfigContent != nil {
                         Button(action: { model.applyImportedConfig() }) {
                             Label("Apply", systemImage: "checkmark.seal.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
-                        
-                        Button(action: model.refreshAll) {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.bordered)
-                    } else {
-                        Button(action: model.refreshAll) {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
+
+                    Button(action: model.refreshAll) {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isApplyingConfig)
                 }
 
-                if model.isScanningDaemons || model.isRefreshingState {
+                if model.isScanningDaemons || model.isRefreshingState || model.isApplyingConfig {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -75,21 +76,22 @@ struct MainView: View {
                     .background(Color.orange.opacity(0.2))
             }
 
-            TabView {
-                DaemonListView(
-                    services: model.configDaemons,
-                    emptyMessage: "No config loaded. Tap 'Import'."
-                )
-                .tabItem {
-                    Label("Config", systemImage: "doc.text")
-                }
+            // NEW: Render the Live Log instead of the Tabs when applying
+            if model.isApplyingConfig {
+                ConsoleLogView(logText: model.liveLog)
+            } else {
+                TabView {
+                    DaemonListView(
+                        services: model.configDaemons,
+                        emptyMessage: "No config loaded. Tap 'Import'."
+                    )
+                    .tabItem { Label("Config", systemImage: "doc.text") }
 
-                DaemonListView(
-                    services: model.allDaemons,
-                    emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
-                )
-                .tabItem {
-                    Label("Services", systemImage: "cpu")
+                    DaemonListView(
+                        services: model.allDaemons,
+                        emptyMessage: model.isScanningDaemons ? "Scanning launchd plist directories..." : "No launchd services found."
+                    )
+                    .tabItem { Label("Services", systemImage: "cpu") }
                 }
             }
         }
@@ -97,13 +99,8 @@ struct MainView: View {
             switch result {
             case .success(let url):
                 let access = url.startAccessingSecurityScopedResource()
-                defer {
-                    if access {
-                        url.stopAccessingSecurityScopedResource()
-                    }
-                }
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
                 model.importConfig(url: url)
-
             case .failure(let error):
                 model.errorMessage = "File import failed: \(error.localizedDescription)"
             }
@@ -115,11 +112,33 @@ struct MainView: View {
                 set: { if !$0 { model.dismissError() } }
             )
         ) {
-            Button("OK", role: .cancel) {
-                model.dismissError()
-            }
+            Button("OK", role: .cancel) { model.dismissError() }
         } message: {
             Text(model.errorMessage ?? "")
+        }
+    }
+}
+
+// NEW: Auto-scrolling terminal console view
+struct ConsoleLogView: View {
+    let logText: String
+    
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                Text(logText)
+                    .font(.system(.caption2, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .id("bottom")
+            }
+            .background(Color.black)
+            .foregroundColor(.green)
+            .onChange(of: logText) { _ in
+                withAnimation {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            }
         }
     }
 }
@@ -141,47 +160,36 @@ struct DaemonListView: View {
     
     private func count(for type: FilterType) -> Int {
         switch type {
-        case .all:
-            return services.count
-        case .enabled:
-            return services.filter { model.isDisabled($0) == false }.count
-        case .disabled:
-            return services.filter { model.isDisabled($0) == true }.count
+        case .all: return services.count
+        case .enabled: return services.filter { model.isDisabled($0) == false }.count
+        case .disabled: return services.filter { model.isDisabled($0) == true }.count
         }
     }
 
     private var filteredServices: [LaunchdService] {
         var result = services
-
         if !searchText.isEmpty {
             result = result.filter { $0.label.localizedCaseInsensitiveContains(searchText) }
         }
-
         switch filter {
-        case .all:
-            break
-        case .enabled:
-            result = result.filter { model.isDisabled($0) == false }
-        case .disabled:
-            result = result.filter { model.isDisabled($0) == true }
+        case .all: break
+        case .enabled: result = result.filter { model.isDisabled($0) == false }
+        case .disabled: result = result.filter { model.isDisabled($0) == true }
         }
-
         return result
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                 TextField("Search labels...", text: $searchText)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
                 
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                     }
                 }
             }
@@ -201,13 +209,11 @@ struct DaemonListView: View {
 
             if services.isEmpty {
                 Spacer()
-                Text(emptyMessage)
-                    .foregroundColor(.secondary)
+                Text(emptyMessage).foregroundColor(.secondary)
                 Spacer()
             } else if filteredServices.isEmpty {
                 Spacer()
-                Text("No matching services.")
-                    .foregroundColor(.secondary)
+                Text("No matching services.").foregroundColor(.secondary)
                 Spacer()
             } else {
                 List(filteredServices) { service in
@@ -225,9 +231,7 @@ struct DaemonRow: View {
     let service: LaunchdService
     @State private var isExpanded = false
 
-    private var isProcessing: Bool {
-        model.isProcessing.contains(service.id)
-    }
+    private var isProcessing: Bool { model.isProcessing.contains(service.id) }
 
     private var toggleBinding: Binding<Bool> {
         Binding(
@@ -237,9 +241,7 @@ struct DaemonRow: View {
     }
 
     private var statusColor: Color {
-        if let disabled = model.isDisabled(service) {
-            return disabled ? .red : .green
-        }
+        if let disabled = model.isDisabled(service) { return disabled ? .red : .green }
         return .gray
     }
     
@@ -251,9 +253,7 @@ struct DaemonRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
+                Circle().fill(statusColor).frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -266,8 +266,7 @@ struct DaemonRow: View {
                             let isMatch = (currentState == targetState)
                             Text(targetState ? "CFG: ON" : "CFG: OFF")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(isMatch ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
                                 .foregroundColor(isMatch ? .green : .orange)
                                 .clipShape(Capsule())
@@ -275,52 +274,28 @@ struct DaemonRow: View {
                     }
 
                     Text(service.metadataText)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .font(.caption2).foregroundColor(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
                 }
 
                 Spacer()
 
                 if isProcessing {
-                    ProgressView()
-                        .frame(width: 44)
+                    ProgressView().frame(width: 44)
                 } else if model.canToggle(service) {
-                    Toggle("", isOn: toggleBinding)
-                        .labelsHidden()
-                        .tint(.green)
+                    Toggle("", isOn: toggleBinding).labelsHidden().tint(.green)
                 } else {
-                    Image(systemName: "questionmark.circle")
-                        .foregroundColor(.orange)
-                        .frame(width: 24)
+                    Image(systemName: "questionmark.circle").foregroundColor(.orange).frame(width: 24)
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            }
+            .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(DaemonDescriptions.get(for: service.label))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    if let path = service.plistPath {
-                        Text(path)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .textSelection(.enabled)
-                    }
-
-                    if let reason = model.toggleUnavailableReason(service) {
-                        Text(reason)
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                    }
+                    Text(DaemonDescriptions.get(for: service.label)).font(.caption).foregroundColor(.secondary)
+                    if let path = service.plistPath { Text(path).font(.caption2).foregroundColor(.secondary).textSelection(.enabled) }
+                    if let reason = model.toggleUnavailableReason(service) { Text(reason).font(.caption2).foregroundColor(.orange) }
                 }
                 .padding(.leading, 20)
             }
@@ -342,14 +317,8 @@ struct DaemonDescriptions {
     ]
 
     static func get(for label: String) -> String {
-        if let description = dict[label] {
-            return description
-        }
-
-        if label.localizedCaseInsensitiveContains("accessibility") {
-            return "Related to iOS accessibility features."
-        }
-
+        if let description = dict[label] { return description }
+        if label.localizedCaseInsensitiveContains("accessibility") { return "Related to iOS accessibility features." }
         return "Toggles launchd disabled-state through the external wrapper script."
     }
 }
