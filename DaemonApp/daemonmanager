@@ -67,7 +67,8 @@ cleanup() {
     [ -n "$FAIL_LOG" ] && rm -f "$FAIL_LOG" 2>/dev/null
     [ -n "$RESET_SNAPSHOT" ] && rm -f "$RESET_SNAPSHOT" 2>/dev/null
 }
-trap cleanup EXIT HUP INT TERM
+trap 'cleanup; exit 143' HUP INT TERM
+trap cleanup EXIT
 
 get_mobile_uid() {
     _uid="$(id -u mobile 2>/dev/null)"

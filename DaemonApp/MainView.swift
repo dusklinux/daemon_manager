@@ -35,6 +35,12 @@ struct MainView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
+                    } else if model.showLogConsole {
+                        Button(action: { model.showLogConsole = false; model.dismissError() }) {
+                            Label("Dismiss Log", systemImage: "checkmark.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
                     } else if model.rawConfigContent != nil {
                         Button(action: { model.applyImportedConfig() }) {
                             Label("Apply", systemImage: "checkmark.seal.fill")
@@ -77,7 +83,7 @@ struct MainView: View {
             }
 
             // NEW: Render the Live Log instead of the Tabs when applying
-            if model.isApplyingConfig {
+            if model.showLogConsole {
                 ConsoleLogView(logText: model.liveLog)
             } else {
                 TabView {

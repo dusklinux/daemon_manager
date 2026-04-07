@@ -59,6 +59,7 @@ final class AppModel: ObservableObject {
     // NEW: Live Logging & Cancellation State
     @Published var applyProgressText: String? = nil
     @Published var isApplyingConfig: Bool = false
+    @Published var showLogConsole: Bool = false
     @Published var liveLog: String = ""
     private var currentPid: pid_t? = nil
 
@@ -289,6 +290,7 @@ final class AppModel: ObservableObject {
 
         DispatchQueue.main.async {
             self.isApplyingConfig = true
+            self.showLogConsole = true
             self.liveLog = "--- STARTING DAEMONMANAGER ---\n"
             self.applyProgressText = "Preparing Config..."
         }
@@ -321,15 +323,20 @@ final class AppModel: ObservableObject {
                 
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
-                    if exitCode != 0 && exitCode != 15 { // 15 is SIGTERM
-                        self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
-                    }
                     self.applyProgressText = nil
+                    self.isApplyingConfig = false
                     
-                    // Delay hiding the console slightly so user can read the final output
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        self.isApplyingConfig = false
+                    if exitCode != 0 && exitCode != 15 && exitCode != 143 { // 15 is SIGTERM, 143 is SIGTERM exit status
+                        self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
                         self.refreshState()
+                    } else {
+                        // Delay hiding the console slightly on clean exit so user can read final output
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            if !self.isApplyingConfig {
+                                self.showLogConsole = false
+                                self.refreshState()
+                            }
+                        }
                     }
                 }
             }
