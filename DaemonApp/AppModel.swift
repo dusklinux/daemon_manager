@@ -6,6 +6,7 @@ struct LaunchdService: Identifiable, Hashable {
     enum Kind: String {
         case agent = "LaunchAgent"
         case daemon = "LaunchDaemon"
+        case angel = "LaunchAngel"
         case unresolved = "Unresolved"
     }
 
@@ -239,6 +240,7 @@ if rc == 0:
         DispatchQueue.global(qos: .userInitiated).async {
             let locations: [(path: String, kind: LaunchdService.Kind, domain: String)] = [
                 ("/System/Library/LaunchAgents", .agent, self.mobileDomain),
+                ("/System/Library/LaunchAngels", .angel, self.mobileDomain),
                 ("/System/Library/LaunchDaemons", .daemon, "system"),
                 ("/var/jb/Library/LaunchAgents", .agent, self.mobileDomain),
                 ("/var/jb/Library/LaunchDaemons", .daemon, "system")
@@ -249,6 +251,8 @@ if rc == 0:
                 guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
                 for fileURL in fileURLs where fileURL.pathExtension == "plist" {
                     guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else { continue }
+                    // Only expose the verified background UI job; other angels include input and core UI.
+                    if location.kind == .angel && service.label != "com.apple.PosterBoard" { continue }
                     servicesByID[service.id] = service
                 }
             }

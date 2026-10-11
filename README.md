@@ -6,7 +6,7 @@ Tap a service name or chevron for its known description, launchd plist and execu
 
 The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The header is kernel free memory including speculative pages, with each page counted once. Tap it for a live memory sheet.
 
-`daemon.cfg` matches all 504 builtin targets: **320 off, 184 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
+`daemon.cfg` matches all 505 builtin targets: **320 off, 184 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
 
 - `searchd`: repeated Photos Spotlight retries and sustained CPU during broad live unloading; fresh boot and a short single-service comparison did not reproduce it, so causality remains unproven.
 - `biomed`: SpringBoard/keyboard Biome metadata and lockfile errors with the service off.
@@ -51,7 +51,7 @@ Discover the helper path on other installations. `appinst /path/to/DaemonApp.ipa
 
 **Recommended On** services have orange guidance and toggle directly without the critical confirmation. Messages dependencies are recommendations, not newly classified bootloop services. Their explanations document feature and dependency consequences, including repeated Identity Services crashes if nehelper is disabled while Identity Services is enabled.
 
-All 504 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
+All 505 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
 
 ## Memory and list organization
 
@@ -62,3 +62,11 @@ Tap the RAM indicator for system pressure, physical RAM, physical free, speculat
 The old header added speculative pages twice: XNU's `free_count` already includes them. It now displays `free_count`, while physical free is `free_count - speculative_count`. This corrects accounting and does not represent a performance change. See [Apple's iOS 16 kernel implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/osfmk/kern/host.c) and [VM counter definitions](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/osfmk/mach/vm_statistics.h).
 
 Pressure uses [Dispatch memory-pressure events](https://developer.apple.com/documentation/dispatch/dispatchsource/makememorypressuresource%28eventmask%3Aqueue%3A%29), seeded on opening/refresh by `kern.memorystatus_vm_pressure_level`. The current sysctl requires privilege on the tested iOS 16 phone, so the existing root credential is used once when needed. This is not periodic privileged polling. Returned flags are Normal=1, Warning=2, Critical=4; [the kernel exports dispatch flags, not its internal enum](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/bsd/kern/kern_memorystatus_notify.c). Unknown readings stay unknown; no pressure percentage is fabricated. The header color reflects the reported pressure instead of hardcoded free-RAM thresholds. Opening memory details never changes a daemon override.
+
+## Wallpaper host and storage (v1.0.4)
+
+The verified PosterBoard job is `/System/Library/LaunchAngels/com.apple.PosterBoard.plist`, label `com.apple.PosterBoard`, domain `user/501` on this phone (the app discovers the mobile UID). Killing its PID does not save an override. Native disable plus bootout stopped it and most associated poster extensions in the observed window. Basic UI checks and reboot persistence require separate verification. The app exposes this specific job under Tools → Wallpaper process and in Services; it does not expose other untested LaunchAngels such as input/UI hosts. The compiled default keeps it enabled for other users; manual disabling remains available, and userspace restart fully applies it. No auto-kill daemon, polling loop, file renaming, or arbitrary app blacklist is installed.
+
+Speculative pages are reclaimable kernel filesystem cache, not a separately disableable SysMain service. Disabling predictive daemons does not eliminate all speculative pages. No useful verified force-compress control was found; no induced memory pressure or forced app eviction is implemented. Core account daemons and siriactionsd retain their existing critical warnings; feature names alone do not establish safe disabling.
+
+The storage driver advertises NVMe SMART capability, but read-only IOCreatePlugInInterfaceForService returned `0xe00002c7` on this device; lifetime writes/endurance/wear could not be obtained. The Memory & Storage sheet displays data-filesystem capacity, available and used space; unavailable health counters are not guessed. No terabyte-write lifetime or rated endurance is invented.

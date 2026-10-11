@@ -682,6 +682,7 @@ struct ConfigBatchView: View {
 // MARK: - Tab 4: Tools & Recovery (From Geranium)
 struct ToolsRecoveryView: View {
     @EnvironmentObject var model: AppModel
+    @State private var showBackgroundUI = false
     let onResetDefaults: () -> Void
     let onEmergencyReset: () -> Void
 
@@ -724,6 +725,20 @@ struct ToolsRecoveryView: View {
                         }
                         .buttonStyle(.bordered)
                     }
+                }
+                .padding()
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(12)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Background UI").font(.headline)
+                    Text("Manage the verified wallpaper host through native launchd overrides. No background killer or periodic polling.")
+                        .font(.footnote).foregroundColor(.secondary)
+                    Button { showBackgroundUI = true } label: {
+                        Label("Wallpaper process", systemImage: "photo")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
                 .padding()
                 .background(Color(UIColor.secondarySystemBackground))
@@ -781,6 +796,9 @@ struct ToolsRecoveryView: View {
                 .cornerRadius(12)
             }
             .padding()
+        }
+        .sheet(isPresented: $showBackgroundUI) {
+            BackgroundUIView().environmentObject(model)
         }
     }
 }

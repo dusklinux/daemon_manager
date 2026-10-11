@@ -188,6 +188,7 @@ struct SafetyManager {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
+        "com.apple.PosterBoard": "Hosts iOS wallpaper and Lock Screen poster extensions. Native disabling stopped it and most poster extensions on the tested iOS 16 phone. Wallpaper display/customization can stop working. This is an optional advanced choice, not a routine process kill.",
         "com.apple.ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "com.apple.AdminLite": "system watchdog daemon (Guideline: NO)",
@@ -1195,6 +1196,7 @@ final class DefaultPresets: ObservableObject {
 
     // Curated default states: true = disable (save RAM), false = keep active
     static let builtinDefaults: [String: Bool] = [
+        "com.apple.PosterBoard": false,
         "bootps": false,
         "com.apple.ABDatabaseDoctor": true,
         "com.apple.AdminLite": false,

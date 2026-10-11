@@ -39,3 +39,8 @@ class PresetTests(unittest.TestCase):
         for label in ('imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded'):
             self.assertIn('com.apple.' + label, recommended)
             self.assertNotIn('com.apple.' + label, critical)
+
+    def test_wallpaper_job_is_available_without_default_disabling(self):
+        source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
+        builtin = source.split('static let builtinDefaults: [String: Bool] = [', 1)[1].split('\n    ]', 1)[0]
+        self.assertIn('"com.apple.PosterBoard": false', builtin)

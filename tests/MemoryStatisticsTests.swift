@@ -26,6 +26,8 @@ struct MemoryStatisticsTests {
         guard let live = MemorySnapshot.read() else { fatalError("host_statistics64 failed on the build host") }
         precondition(live.totalMiB > 0 && live.freeAndSpeculativeMiB >= live.speculativeMiB)
         precondition(live.physicalFreeMiB >= 0 && live.compressorMiB >= 0)
-        print("Memory accounting, pressure flags, empty compressor, and live Mach snapshot passed")
+        guard let disk = StorageSnapshot.read() else { fatalError("Storage capacity unavailable on the build host") }
+        precondition(disk.totalBytes > 0 && disk.availableBytes >= 0 && disk.availableBytes <= disk.totalBytes)
+        print("Storage capacity and memory accounting, pressure flags, empty compressor, and live Mach snapshot passed")
     }
 }
