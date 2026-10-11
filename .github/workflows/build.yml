@@ -63,8 +63,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
+          tag_name: v1.0.2
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.1"
-          body: "iOS 16+ UI polish, service details, and revised defaults. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.2"
+          body: "Critical service tab, direct recommendation toggles, Messages dependency defaults, and concise RAM display. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

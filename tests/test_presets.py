@@ -24,5 +24,18 @@ class PresetTests(unittest.TestCase):
         critical = source.split('static let criticalServices: [String: String] = [', 1)[1].split('\n    ]', 1)[0]
         labels = re.findall(r'"([^\"]+)":', critical)
         self.assertFalse([label for label in labels if builtin.get(label) is True])
-        for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown'):
+        for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
+                      'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded'):
             self.assertIs(builtin['com.apple.' + label], False)
+
+    def test_recommendations_are_enabled_and_separate_from_critical(self):
+        source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
+        def labels(name, kind):
+            block = source.split(f'static let {name}: [String: {kind}] = [', 1)[1].split('\n    ]', 1)[0]
+            return set(re.findall(r'"([^\"]+)":', block))
+        recommended = labels('recommendedEnabled', 'String')
+        critical = labels('criticalServices', 'String')
+        self.assertFalse(recommended & critical)
+        for label in ('imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded'):
+            self.assertIn('com.apple.' + label, recommended)
+            self.assertNotIn('com.apple.' + label, critical)

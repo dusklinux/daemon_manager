@@ -78,6 +78,18 @@ struct MainView: View {
                     .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
                     .toolbarBackground(.visible, for: .tabBar)
 
+                    LiveServicesView(criticalOnly: true,
+                        onSafetyPrompt: { service, enable in
+                            pendingToggleService = service
+                            pendingToggleAction = enable
+                            showSafetyAlert = true
+                        }
+                    )
+                    .tabItem { Label("Critical", systemImage: "exclamationmark.shield") }
+                    .tag(4)
+                    .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
+
                     // TAB 2: Defaults & Presets (Requested by User)
                     DefaultsConfigView()
                         .tabItem { Label("Defaults", systemImage: "slider.horizontal.3") }
@@ -170,7 +182,19 @@ struct LiveServicesView: View {
     @StateObject private var presets = DefaultPresets.shared
     @State private var searchText = ""
     @State private var filter: FilterType = .all
+    var criticalOnly = false
     let onSafetyPrompt: (LaunchdService, Bool) -> Void
+
+    // Membership depends on classification, never the current toggle state.
+    private var services: [LaunchdService] {
+        let list = criticalOnly ? model.allDaemons.filter { SafetyManager.isCritical($0.label) } : model.allDaemons
+        guard criticalOnly else { return list }
+        return list.sorted {
+            let leftOff = model.isDisabled($0) == true
+            let rightOff = model.isDisabled($1) == true
+            return leftOff != rightOff ? leftOff : $0.label.localizedStandardCompare($1.label) == .orderedAscending
+        }
+    }
 
     enum FilterType: String, CaseIterable {
         case all = "All"
@@ -180,7 +204,7 @@ struct LiveServicesView: View {
     }
 
     private var filteredServices: [LaunchdService] {
-        var list = model.allDaemons
+        var list = services
         if !searchText.isEmpty {
             list = list.filter { $0.label.localizedCaseInsensitiveContains(searchText) }
         }
@@ -201,9 +225,19 @@ struct LiveServicesView: View {
         VStack(spacing: 0) {
             // Search Bar & Filter
             VStack(spacing: 8) {
+                if criticalOnly {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Critical services").font(.headline)
+                        Text("Keep these core services enabled. Disabling them can break core usage, boot, or stability; expand a service to see its specific warning.")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text("\(services.filter { model.isDisabled($0) == true }.count) disabled • Disabled entries appear first and stay in this tab.")
+                            .font(.caption.weight(.semibold)).foregroundColor(.red)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                    TextField("Search daemons...", text: $searchText)
+                    TextField(criticalOnly ? "Search critical services..." : "Search daemons...", text: $searchText)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                     if !searchText.isEmpty {
@@ -259,17 +293,18 @@ struct LiveServicesView: View {
 
     private func badgeTitle(for f: FilterType) -> String {
         switch f {
-        case .all: return "All (\(model.allDaemons.count))"
+        case .all: return "All (\(services.count))"
         case .active:
-            let c = model.allDaemons.filter { model.isDisabled($0) == false }.count
+            let c = services.filter { model.isDisabled($0) == false }.count
             return "On (\(c))"
         case .disabled:
-            let c = model.allDaemons.filter { (model.isDisabled($0) ?? false) == true }.count
+            let c = services.filter { (model.isDisabled($0) ?? false) == true }.count
             return "Off (\(c))"
         case .mismatch:
-            let c = model.allDaemons.filter {
+            let c = services.filter {
                 let target = presets.targetState(for: $0.label)
-                return (model.isDisabled($0) ?? false) != target
+                guard let current = model.isDisabled($0) else { return false }
+                return current != target
             }.count
             return "Changes (\(c))"
         }
@@ -343,12 +378,12 @@ struct LiveServiceRow: View {
 struct ServiceWarningBadge: View {
     let label: String
     var body: some View {
-        if SafetyManager.requiresWarning(label) {
-            Text(SafetyManager.isCritical(label) ? "⛔ CRITICAL: KEEP ENABLED" : "⚠ KEEP ENABLED")
+        if SafetyManager.warning(for: label) != nil {
+            Text(SafetyManager.isCritical(label) ? "⛔ CRITICAL: KEEP ENABLED" : "RECOMMENDED ON")
                 .font(.system(size: 10, weight: .bold))
                 .padding(.horizontal, 6).padding(.vertical, 3)
-                .foregroundColor(.red)
-                .background(Color.red.opacity(0.12))
+                .foregroundColor(SafetyManager.isCritical(label) ? .red : .orange)
+                .background((SafetyManager.isCritical(label) ? Color.red : Color.orange).opacity(0.12))
                 .clipShape(Capsule())
         }
     }
@@ -363,12 +398,20 @@ struct DefaultsConfigView: View {
 
     enum DefaultFilter: String, CaseIterable {
         case all = "All"
-        case disable = "Disable (RAM)"
-        case keep = "Keep Active"
+        case disable = "Off"
+        case keep = "On"
+        case recommended = "Recommended"
+    }
+
+    private var presetServices: [LaunchdService] {
+        let installed = Set(model.allDaemons.map(\.label))
+        let missing = DefaultPresets.builtinDefaults.keys.filter { !installed.contains($0) }
+            .map { LaunchdService.unresolved(label: $0) }
+        return (model.allDaemons + missing).sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
     }
 
     private var filteredDaemons: [LaunchdService] {
-        var list = model.allDaemons
+        var list = presetServices
         if !searchText.isEmpty {
             list = list.filter { $0.label.localizedCaseInsensitiveContains(searchText) }
         }
@@ -376,13 +419,15 @@ struct DefaultsConfigView: View {
         case .all: return list
         case .disable: return list.filter { presets.targetState(for: $0.label) == true }
         case .keep: return list.filter { presets.targetState(for: $0.label) == false }
+        case .recommended: return list.filter { SafetyManager.recommendation(for: $0.label) != nil }
         }
     }
 
     private var unoptimizedCount: Int {
         model.allDaemons.filter {
             let target = presets.targetState(for: $0.label)
-            return (model.isDisabled($0) ?? false) != target
+            guard let current = model.isDisabled($0) else { return false }
+            return current != target
         }.count
     }
 
@@ -394,7 +439,7 @@ struct DefaultsConfigView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Default targets")
                             .font(.headline.bold())
-                        Text("\(model.allDaemons.count) daemons • \(unoptimizedCount) pending changes")
+                        Text("\(DefaultPresets.builtinDefaults.count) built-in targets • \(unoptimizedCount) pending changes")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -408,7 +453,7 @@ struct DefaultsConfigView: View {
                     .disabled(model.isApplyingConfig || model.isRefreshingState || model.isScanningDaemons)
                 }
 
-                Text("Overrides take full effect after a userspace restart. Changing a target here does not change the phone until you apply it.")
+                Text("Built-in defaults are included in the app. Applying targets changes only installed services; entries not found on this device remain available as targets. Restart userspace for full effect.")
                     .font(.caption).foregroundColor(.secondary)
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
@@ -448,6 +493,7 @@ struct DefaultsRow: View {
     @StateObject private var presets = DefaultPresets.shared
     let service: LaunchdService
     @State private var isExpanded = false
+    @State private var showCriticalWarning = false
 
     private var isTargetDisabled: Bool { presets.targetState(for: service.label) }
 
@@ -464,6 +510,9 @@ struct DefaultsRow: View {
                                 .foregroundColor(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
                             ServiceWarningBadge(label: service.label)
+                            if service.kind == .unresolved {
+                                Text("Not found on this device").font(.caption2).foregroundColor(.secondary)
+                            }
                             Text(isTargetDisabled ? "Target: Off" : "Target: Keep enabled")
                                 .font(.caption).foregroundColor(isTargetDisabled ? .orange : .green)
                         }
@@ -476,7 +525,13 @@ struct DefaultsRow: View {
                 .buttonStyle(.plain)
                 Toggle("Keep \(service.label) enabled by default", isOn: Binding(
                     get: { !isTargetDisabled },
-                    set: { presets.setTargetState(for: service.label, disable: !$0) }
+                    set: { enabled in
+                        if !enabled && SafetyManager.isCritical(service.label) {
+                            showCriticalWarning = true
+                        } else {
+                            presets.setTargetState(for: service.label, disable: !enabled)
+                        }
+                    }
                 ))
                 .labelsHidden()
                 .tint(.green)
@@ -484,6 +539,14 @@ struct DefaultsRow: View {
             if isExpanded { ServiceDetailsView(service: service) }
         }
         .padding(.vertical, 6)
+        .alert("Critical Service Target", isPresented: $showCriticalWarning) {
+            Button("Set Target Off", role: .destructive) {
+                presets.setTargetState(for: service.label, disable: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(SafetyManager.warning(for: service.label) ?? "Keep this core service enabled.")
+        }
     }
 }
 
@@ -537,7 +600,7 @@ struct ConfigBatchView: View {
                     Text("Export Configuration")
                         .font(.headline)
 
-                    Text("Export the current running state of all daemons to share or use on other devices.")
+                    Text("Export the current saved overrides of all daemons to share or use on other devices.")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 

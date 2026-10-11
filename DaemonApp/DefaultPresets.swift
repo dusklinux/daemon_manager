@@ -155,11 +155,15 @@ struct SafetyManager {
         "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
         "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
         "com.apple.syncdefaultsd": "Keep enabled for synchronized key-value preferences. This service provides com.apple.kvsd; multiple apps logged failed key-value-store access while it was off.",
+        "com.apple.imagent": "Recommended for Messages. Handles messaging accounts and communication; keep enabled when using Messages. You can disable it if you do not use that feature.",
+        "com.apple.identityservicesd": "Recommended for iMessage and FaceTime identity services. Keep enabled when using those features, together with nehelper. It repeatedly aborted when nehelper was disabled on the tested phone.",
+        "com.apple.nehelper": "Recommended for Network Extension clients, including Identity Services. With nehelper disabled, identityservicesd repeatedly aborted while creating its network interface and Messages could not open. Re-enabling it restored conversations. It is not exclusive to Messages.",
+        "com.apple.nehelper-embedded": "Alias of the nehelper configuration file. The installed job label is com.apple.nehelper; keep it enabled for Identity Services and other Network Extension clients.",
         "com.apple.mobile.lockdown": "Keep enabled for USB pairing, trust, computer backups, and host tools. Paired USB queries failed when it was off and worked after it was restored. USB charging and port-forwarded SSH are separate functions."
     ]
 
     static func requiresWarning(_ label: String) -> Bool {
-        isCritical(label) || recommendation(for: label) != nil
+        isCritical(label)
     }
 
     static func recommendation(for label: String) -> String? {
@@ -1440,12 +1444,12 @@ final class DefaultPresets: ObservableObject {
         "com.apple.iconservices.iconservicesagent": false,
         "com.apple.idamd": true,
         "com.apple.idcredd": true,
-        "com.apple.identityservicesd": true,
+        "com.apple.identityservicesd": false,
         "com.apple.ids.IDSCredentialsAgent": true,
         "com.apple.idscredentialsagent": false,
         "com.apple.idsfoundation.IDSRemoteURLConnectionAgent": true,
         "com.apple.idsremoteurlconnectionagent": false,
-        "com.apple.imagent": true,
+        "com.apple.imagent": false,
         "com.apple.imautomatichistorydeletionagent": true,
         "com.apple.imcore.imtransferagent": true,
         "com.apple.imtransferagent": false,
@@ -1544,8 +1548,8 @@ final class DefaultPresets: ObservableObject {
         "com.apple.ndoagent": false,
         "com.apple.neagent-ios": true,
         "com.apple.nearbyd": true,
-        "com.apple.nehelper": true,
-        "com.apple.nehelper-embedded": true,
+        "com.apple.nehelper": false,
+        "com.apple.nehelper-embedded": false,
         "com.apple.nesessionmanager": false,
         "com.apple.networkserviceproxy": true,
         "com.apple.newsd": true,

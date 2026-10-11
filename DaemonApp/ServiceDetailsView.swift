@@ -40,9 +40,9 @@ struct ServiceDetailsView: View {
             if let warning = SafetyManager.warning(for: service.label) {
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(SafetyManager.isCritical(service.label) ? .red : .orange)
                     .padding(8)
-                    .background(Color.red.opacity(0.10))
+                    .background((SafetyManager.isCritical(service.label) ? Color.red : Color.orange).opacity(0.10))
                     .cornerRadius(8)
             }
             if let description = DaemonDescriptions.get(for: service.label) {

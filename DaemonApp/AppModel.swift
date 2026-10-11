@@ -46,7 +46,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var daemonManagerAvailable = false
     @Published private(set) var environmentWarning: String?
 
-    @Published var ramUsageText = "Calculating RAM..."
+    @Published var ramUsageText = "… MiB"
     @Published var freeRAMMB: Double = 0.0
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
@@ -161,7 +161,7 @@ final class AppModel: ObservableObject {
         let freeMB = freeBytes / 1_048_576.0
         DispatchQueue.main.async {
             self.freeRAMMB = freeMB
-            self.ramUsageText = String(format: "Free + speculative: %.0f MiB", freeMB)
+            self.ramUsageText = String(format: "%.0f MiB", freeMB)
         }
     }
 
