@@ -31,19 +31,21 @@ def parse_snapshot(data):
 
 def read_report(path):
     if os.path.isdir(path):
-        files = glob.glob(os.path.join(path, '**', 'ASPSnapshots', 'asptool_snapshot.log'), recursive=True)
-        if not files:
+        snapshot = os.path.join(path, 'ASPSnapshots', 'asptool_snapshot.log')
+        if not os.path.isfile(snapshot):
             raise RuntimeError('The diagnostic did not produce an ASP NAND health snapshot.')
-        chosen = max(files, key=os.path.getmtime)
-        with open(chosen, 'rb') as source:
+        with open(snapshot, 'rb') as source:
             values = parse_snapshot(source.read())
     else:
-        with tarfile.open(path, 'r:gz') as archive:
-            matches = [m for m in archive.getmembers() if m.isfile() and m.name.endswith('/ASPSnapshots/asptool_snapshot.log')]
-            if not matches:
+        # Stream only as far as the snapshot; avoid indexing and decompressing twice.
+        with tarfile.open(path, 'r|gz') as archive:
+            for member in archive:
+                if member.isfile() and member.name.endswith('/ASPSnapshots/asptool_snapshot.log'):
+                    with archive.extractfile(member) as source:
+                        values = parse_snapshot(source.read())
+                    break
+            else:
                 raise RuntimeError('The diagnostic archive has no ASP NAND health snapshot.')
-            with archive.extractfile(matches[-1]) as source:
-                values = parse_snapshot(source.read())
     return {'path': path, 'sampledAt': os.path.getmtime(path), 'values': values}
 
 def latest_report():
