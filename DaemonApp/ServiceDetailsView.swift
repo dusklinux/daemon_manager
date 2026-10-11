@@ -26,7 +26,7 @@ struct ServiceDetailsView: View {
     @State private var fileInformation: [String: String] = [:]
 
     private var relatedFiles: [RelatedDataFile] {
-        guard ["com.apple.contactsd", "com.apple.ABDatabaseDoctor", "com.apple.absd"].contains(service.label) else { return [] }
+        guard ["com.apple.contactsd", "com.apple.ABDatabaseDoctor"].contains(service.label) else { return [] }
         return [
             RelatedDataFile(title: "Contacts database", path: "/var/mobile/Library/AddressBook/AddressBook.sqlitedb",
                             note: "The Contacts address-book store. Metadata only; contact records are not read."),

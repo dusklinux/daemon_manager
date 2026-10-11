@@ -74,9 +74,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var diskHealthReport: DiskHealthReport?
     @Published private(set) var diskHealthError: String?
     @Published private(set) var isDiagnosingDisk = false
-    @Published private(set) var animationsDisabled: Bool?
-    @Published private(set) var animationControlError: String?
-    @Published private(set) var isChangingAnimations = false
 
     private var currentPid: pid_t? = nil
     private var disabledServices: Set<DisabledServiceKey>?
@@ -241,27 +238,6 @@ if rc == 0:
         }
     }
 
-    func manageAnimations(disable: Bool? = nil) {
-        guard !isChangingAnimations, !isDiagnosingDisk else { return }
-        isChangingAnimations = true
-        animationControlError = nil
-        let mode = disable.map { $0 ? "True" : "False" } ?? "None"
-        let script = AnimationControl.script + "\nrun(" + mode + ")\n"
-        let command = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
-        DispatchQueue.global(qos: .utility).async {
-            let result = self.posixRunSync(executable: command.executable, args: command.arguments, trackProcess: false)
-            DispatchQueue.main.async {
-                self.isChangingAnimations = false
-                self.animationsDisabled = result.exitCode == 0 ? result.output.contains("animations_disabled=True") : nil
-                if result.exitCode != 0 {
-                    self.animationControlError = result.output.split(separator: "\n").first { $0.hasPrefix("animation_error=") }.map { String($0.dropFirst(16)) } ?? "Could not read the animation control. Check the root password in Tools."
-                } else if disable != nil {
-                    self.statusMessage = "Animation setting saved. Respring to apply it."
-                }
-            }
-        }
-    }
-
     func refreshState(completion: (() -> Void)? = nil) {
         DispatchQueue.main.async { self.isRefreshingState = true }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -301,8 +277,8 @@ if rc == 0:
                 guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
                 for fileURL in fileURLs where fileURL.pathExtension == "plist" {
                     guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else { continue }
-                    // Only expose the verified background UI job; other angels include input and core UI.
-                    if location.kind == .angel && service.label != "com.apple.PosterBoard" { continue }
+                    // Expose only the two tested UI hosts; other angels include input and core UI.
+                    if location.kind == .angel && !["com.apple.PosterBoard", "com.apple.AccessibilityUIServer"].contains(service.label) { continue }
                     servicesByID[service.id] = service
                 }
             }

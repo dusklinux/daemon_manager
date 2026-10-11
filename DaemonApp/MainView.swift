@@ -736,7 +736,7 @@ struct ToolsRecoveryView: View {
                     Text("Manage the verified wallpaper host through native launchd overrides. No background killer or periodic polling.")
                         .font(.footnote).foregroundColor(.secondary)
                     Button { showBackgroundUI = true } label: {
-                        Label("Wallpaper & animations", systemImage: "photo")
+                        Label("Background UI", systemImage: "photo")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)

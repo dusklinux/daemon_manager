@@ -3,6 +3,7 @@ import SwiftUI
 struct DiskHealthView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedWriteCounter: String?
 
     var body: some View {
         NavigationStack {
@@ -30,13 +31,13 @@ struct DiskHealthView: View {
                         value("SLC endurance cycles", "maxSLCEndurance", report: report)
                     }
                     Section("Driver counters") {
-                        value("Host writes (raw)", "hostWrites", report: report)
-                        value("NAND writes (raw)", "nandWrites", report: report)
+                        writeCounter("Host writes", "hostWrites", report: report)
+                        writeCounter("NAND writes", "nandWrites", report: report)
                         value("Critical warning flags", "smartCritWarnings", report: report)
                         value("Grown bad blocks", "numGrownBad", report: report)
                         value("Retired blocks", "numRetiredBlocks", report: report)
                         value("Uncorrectable reads", "ueccReads", report: report)
-                        Text("Write-counter units are unverified on this model, so these counters are not converted to TB. Missing fields remain unavailable.")
+                        Text("Tap a write counter for its meaning and conversion status. GB is unavailable because this diagnostic does not identify the counter units. Missing fields remain unavailable.")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     Section("Snapshot") {
@@ -49,6 +50,25 @@ struct DiskHealthView: View {
             .navigationTitle("Disk Health")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } } }
+            .alert(selectedWriteCounter ?? "Write counter", isPresented: Binding(
+                get: { selectedWriteCounter != nil },
+                set: { if !$0 { selectedWriteCounter = nil } })) {
+                    Button("OK") { selectedWriteCounter = nil }
+                } message: {
+                    Text("Host writes count data sent to storage; NAND writes count flash writes, including internal storage work. These are cumulative driver counters in the saved report.\n\nGB conversion is unavailable: this report does not establish whether one count represents bytes, sectors, or another unit. Decimal GB would equal verified bytes ÷ 1,000,000,000. Treating these raw counts as bytes would give an incorrect result.")
+                }
+        }
+    }
+
+    private func writeCounter(_ title: String, _ key: String, report: DiskHealthReport) -> some View {
+        Button { selectedWriteCounter = title } label: {
+            HStack {
+                Text(title).foregroundColor(.primary)
+                Spacer()
+                Text(report.values[key].map { $0.formatted(.number.grouping(.always)) + " raw" } ?? "Unavailable")
+                    .monospacedDigit().foregroundColor(.secondary)
+                Image(systemName: "info.circle").font(.caption)
+            }
         }
     }
 

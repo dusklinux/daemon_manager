@@ -1,4 +1,3 @@
-import contextlib
 import io
 import pathlib
 import plistlib
@@ -55,35 +54,6 @@ class DiskDiagnosticsTests(unittest.TestCase):
             self.assertIn(('disable', 'system/com.apple.sysdiagnose'), calls)
             self.assertIn(('bootout', 'system/com.apple.sysdiagnose'), calls)
             self.assertNotIn(('disable', 'system/com.apple.sysdiagnose_helper'), calls)
-
-
-class AnimationControlTests(unittest.TestCase):
-    def test_filter_toggle_round_trip_preserves_bytes(self):
-        ns = script_namespace('AnimationControl.swift')
-        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):
-            base = pathlib.Path(temp) / 'NoAnimationsX'
-            ns['BASE'] = str(base)
-            base.with_suffix('.dylib').touch()
-            active = base.with_suffix('.plist')
-            data = plistlib.dumps({'Filter': {'Bundles': ['com.apple.springboard']}}, fmt=plistlib.FMT_BINARY)
-            active.write_bytes(data)
-            ns['run'](False)
-            self.assertFalse(active.exists())
-            ns['run'](True)
-            self.assertEqual(active.read_bytes(), data)
-
-    def test_custom_filter_is_not_changed(self):
-        ns = script_namespace('AnimationControl.swift')
-        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):
-            base = pathlib.Path(temp) / 'NoAnimationsX'
-            ns['BASE'] = str(base)
-            base.with_suffix('.dylib').touch()
-            active = base.with_suffix('.plist')
-            data = plistlib.dumps({'Filter': {'Bundles': ['different.app']}})
-            active.write_bytes(data)
-            with self.assertRaises(SystemExit):
-                ns['run'](False)
-            self.assertEqual(active.read_bytes(), data)
 
 
 if __name__ == '__main__':

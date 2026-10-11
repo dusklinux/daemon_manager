@@ -6,7 +6,7 @@ Tap a service name or chevron for its known description, launchd plist and execu
 
 The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The header is kernel free memory including speculative pages, with each page counted once. Tap it for a live memory sheet.
 
-`daemon.cfg` matches all 505 builtin targets: **320 off, 185 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
+`daemon.cfg` matches all 506 builtin targets: **320 off, 186 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
 
 - `searchd`: repeated Photos Spotlight retries and sustained CPU during broad live unloading; fresh boot and a short single-service comparison did not reproduce it, so causality remains unproven.
 - `biomed`: SpringBoard/keyboard Biome metadata and lockfile errors with the service off.
@@ -51,7 +51,7 @@ Discover the helper path on other installations. `appinst /path/to/DaemonApp.ipa
 
 **Recommended On** services have orange guidance and toggle directly without the critical confirmation. Messages dependencies are recommendations, not newly classified bootloop services. Their explanations document feature and dependency consequences, including repeated Identity Services crashes if nehelper is disabled while Identity Services is enabled.
 
-All 505 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
+All 506 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
 
 ## Memory and list organization
 
@@ -65,7 +65,7 @@ Pressure uses [Dispatch memory-pressure events](https://developer.apple.com/docu
 
 ## Wallpaper host and storage (v1.0.4)
 
-The verified PosterBoard job is `/System/Library/LaunchAngels/com.apple.PosterBoard.plist`, label `com.apple.PosterBoard`, domain `user/501` on this phone (the app discovers the mobile UID). Killing its PID does not save an override. Native disable plus bootout stopped it and most associated poster extensions in the observed window. A userspace reboot preserved the off override; the user confirmed unlock, Home, Notes, and Messages work. The app exposes this specific job under Tools → Wallpaper & animations and in Services; it does not expose other untested LaunchAngels such as input/UI hosts. The compiled default keeps it enabled for other users; manual disabling remains available, and userspace restart fully applies it. Wallpaper control installs no auto-kill daemon, polling loop, file renaming, or arbitrary app blacklist.
+The verified PosterBoard job is `/System/Library/LaunchAngels/com.apple.PosterBoard.plist`, label `com.apple.PosterBoard`, domain `user/501` on this phone (the app discovers the mobile UID). Killing its PID does not save an override. Native disable plus bootout stopped it and most associated poster extensions in the observed window. A userspace reboot preserved the off override; the user confirmed unlock, Home, Notes, and Messages work. The app exposes this job under Tools → Background UI and in Services, together with the tested AccessibilityUIServer host. Other untested LaunchAngels remain excluded. The compiled default keeps it enabled for other users; manual disabling remains available, and userspace restart fully applies it. Wallpaper control installs no auto-kill daemon, polling loop, file renaming, or arbitrary app blacklist.
 
 Speculative pages are reclaimable kernel filesystem cache, not a separately disableable SysMain service. Disabling predictive daemons does not eliminate all speculative pages. No useful verified force-compress control was found; no induced memory pressure or forced app eviction is implemented. Core account daemons and siriactionsd retain their existing critical warnings; feature names alone do not establish safe disabling.
 
@@ -73,10 +73,20 @@ The storage driver advertises NVMe SMART capability, but read-only IOCreatePlugI
 
 ## System transitions and NAND diagnostics (v1.0.5)
 
-Tools → Wallpaper & animations includes a reversible **Disable system animations** switch for the optional [NoAnimationsX 1.2 rootless tweak](https://repo.icrazeios.com/). Install that package through Sileo first on another device; the IPA does not redistribute the developer's binary. The switch enables/disables its SpringBoard-only injection filter and requires a respring. There is no background worker, speed multiplier, or change to other apps' animations. The verified 1.2 package SHA256 is `ddfbeb477b0349a86e41b2e3c66a731724763cd7d15d9147ced035106bef63b1`. After installation/respring on the tested iOS 16.7.16 phone, the user confirmed instant app open/close, switcher, and folder transitions, with unlocking and touch working. Other system transitions and future iOS versions are not independently verified. Disabling the switch moves `NoAnimationsX.plist` to `NoAnimationsX.plist.daemonmanager-disabled`; enabling moves it back. A package reinstall/update can restore the active filter. The app reads the actual filter state and does not overwrite custom filters.
+Animation tweaks are installed and managed independently; v1.0.6 has no tweak-dependent animation controls.
 
 The RAM panel now contains memory only. Tools → Disk diagnostics can read the latest completed sysdiagnose or collect a new one with `sysdiagnose -f /var/tmp/daemon-manager-diagnostics -n`. Collection takes several minutes; keep the app open. It temporarily enables/loads only sysdiagnose and its helper when necessary, restores originally disabled overrides afterward, and stops those originally disabled jobs. No reports upload automatically. Results remain on the phone; collection is on demand, never scheduled or performed during launch.
 
 NAND health comes from `ASPSnapshots/asptool_snapshot.log`, including NUL-padded text. Exact field names are parsed; missing fields stay unavailable, and a failed collection never substitutes an older snapshot. The tested fresh report exposed `percentUsed=9`, average TLC cycles 92, native endurance cycles 1000, SLC cycles 8278 of 45000, and zero critical warning flags, grown bad blocks, retired blocks, and uncorrectable reads. These are driver counters, not a lifetime guarantee. Host/NAND writes remain raw counters because their byte units were not independently established for this controller. No conversion to TB, rated TBW, or remaining-years estimate is fabricated. Existing archived reports may also be read without collecting again. Both the new-report collection and restoration of all prior overrides were exercised on the phone.
 
 The app icon uses the supplied frog sticker as a square, opaque 1024×1024 asset. Built-in imagegen edit prompt: “Center the original frog sticker on matching beige paper in a square canvas; preserve the frog, sunglasses, hoodie, teddy bear, white sticker border and colors; no text or rounded corners.” Source asset: `DaemonApp/Assets.xcassets/AppIcon.appiconset/AppIcon.png`. Xcode generates the device sizes from this single-size catalog.
+
+## Audit follow-up and app revision (v1.0.6)
+
+Tools → Background UI now exposes PosterBoard and AccessibilityUIServer only. AccessibilityUIServer is **KEEP / Recommended On**, not capital NO; its builtin target is enabled. It remains freely switchable, including in Services. The tested phone retains its manual off override. Re-enable and restart userspace before using accessibility features. Installation never applies defaults. The config and IPA contain **506 targets: 320 off, 186 on**; biomed, syncdefaultsd and Messages dependencies remain enabled by default.
+
+Basic usage passed on the tested phone after host disabling and reboot. Remaining CoreDuet, graphics, preferences and account errors were not eliminated; no battery-life or net RAM improvement was established. See the iOS reference for the measured audit and its limits.
+
+Animation controls and their helper were removed from the app. The independently installed animation tweak is left active and managed outside this app. RAM remains memory-only. Disk write counters use grouped raw numbers and can be tapped for their meaning and conversion status. GB conversion remains unavailable: the ASP snapshot and installed diagnostic parser did not establish bytes per count; page size or generic NVMe units cannot substitute for that evidence. No guessed conversion is shipped.
+
+The unsupported absd Contacts description and related database links were removed. Its actual plist exports com.apple.absinthed and com.apple.absd; the broader private role remains undocumented here. Verified Contacts database links remain for contactsd and ABDatabaseDoctor.

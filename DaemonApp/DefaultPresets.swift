@@ -152,6 +152,7 @@ struct SafetyManager {
     // Dependency/functionality warnings observed during the 2026-10-11 device test.
     // These are recommendations, not claims that the services cause bootloops.
     static let recommendedEnabled: [String: String] = [
+        "com.apple.AccessibilityUIServer": "Keep enabled for accessibility features. Turning it off can make accessibility controls unavailable and logs unavailable-host messages. Basic Home, Notes, Camera and Messages checks passed after reboot on one iOS 16 phone with Back Tap and Speak Screen off; other accessibility features were not tested. Re-enable and restart userspace before using them.",
         "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
         "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
         "com.apple.syncdefaultsd": "Keep enabled for synchronized key-value preferences. This service provides com.apple.kvsd; multiple apps logged failed key-value-store access while it was off.",
@@ -188,6 +189,7 @@ struct SafetyManager {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
+        "com.apple.AccessibilityUIServer": "Hosts system accessibility user interfaces. This optional per-device override is separate from disabling accessibility features in Settings.",
         "com.apple.PosterBoard": "Hosts iOS wallpaper and Lock Screen poster extensions. Native disabling stopped it and most poster extensions on the tested iOS 16 phone. Wallpaper display/customization can stop working. This is an optional advanced choice, not a routine process kill.",
         "com.apple.ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
@@ -337,8 +339,6 @@ struct DaemonDescriptions {
         "WirelessRadioManager": "Coordinates wireless radios such as cellular/Wi‑Fi/Bluetooth (Guideline: no)",
         "com.apple.abm-helper": "Apple Business Manager (Guideline: yes)",
         "abm-helper": "Apple Business Manager (Guideline: yes)",
-        "com.apple.absd": "Address Book Source Daemon for Contacts accounts and sync (Guideline: no)",
-        "absd": "Address Book Source Daemon for Contacts accounts and sync (Guideline: no)",
         "com.apple.accessibility.axassetsd": "Accessibility asset downloads, such as voices (Guideline: if-unused)",
         "accessibility.axassetsd": "Accessibility asset downloads, such as voices (Guideline: if-unused)",
         "com.apple.accessibility.axremoted": "Remote accessibility services (Guideline: if-unused)",
@@ -1197,6 +1197,7 @@ final class DefaultPresets: ObservableObject {
     // Curated default states: true = disable (save RAM), false = keep active
     static let builtinDefaults: [String: Bool] = [
         "com.apple.PosterBoard": false,
+        "com.apple.AccessibilityUIServer": false,
         "bootps": false,
         "com.apple.ABDatabaseDoctor": true,
         "com.apple.AdminLite": false,
@@ -1714,7 +1715,9 @@ final class DefaultPresets: ObservableObject {
             customDefaults = saved
         } else if let legacy = defaults.dictionary(forKey: "userConfiguredDefaults") as? [String: Bool] {
             // The old format copied every builtin value. Retain differing choices.
-            let changed = Set(SafetyManager.recommendedEnabled.keys)
+            let changed: Set<String> = ["com.apple.searchd", "com.apple.biomed", "com.apple.syncdefaultsd",
+                                        "com.apple.imagent", "com.apple.identityservicesd", "com.apple.nehelper",
+                                        "com.apple.nehelper-embedded", "com.apple.mobile.lockdown"]
             customDefaults = legacy.filter { label, value in
                 let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value
