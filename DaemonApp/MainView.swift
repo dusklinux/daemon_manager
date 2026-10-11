@@ -146,6 +146,7 @@ struct MainView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .statusBarHidden(true)
     }
 
     private var ramColor: Color {
@@ -319,19 +320,13 @@ struct LiveServiceRow: View {
 
                 if isProcessing {
                     ProgressView().frame(width: 44)
-                } else if isCritical {
-                    // Protected system daemon: Locked to prevent accidental disablement
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundColor(.red)
-                        .font(.system(size: 20))
-                        .frame(width: 44)
                 } else {
                     Toggle("", isOn: Binding(
                         get: { !isCurrentlyDisabled },
                         set: { onToggle($0) }
                     ))
                     .labelsHidden()
-                    .tint(.green)
+                    .tint(isCritical ? .orange : .green)
                 }
             }
             .contentShape(Rectangle())
@@ -424,20 +419,6 @@ struct DefaultsConfigView: View {
                     .disabled(model.isApplyingConfig)
                 }
 
-                // Guide / Explanatory Banner
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "questionmark.circle.fill").foregroundColor(.blue)
-                        Text("How to Configure & Apply Defaults").font(.caption.bold())
-                    }
-                    Text("• Configure targets below: 'Disabled (RAM Saver)' turns off on apply; 'Keep Active' stays running.\n• Tap 'Apply Defaults' to batch-apply all targets without waiting.\n• Daemons marked ⛔ CRITICAL are protected core services permanently locked to Keep Active.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(10)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(10)
-
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                     TextField("Search preset targets...", text: $searchText)
@@ -501,32 +482,19 @@ struct DefaultsRow: View {
                         }
                     }
 
-                    if isCritical {
-                        Text("Protected Core Daemon • Always Kept Active")
-                            .font(.caption2.bold())
-                            .foregroundColor(.red)
-                    } else {
-                        Text(isTargetDisabled ? "Target: Disabled (RAM Saver)" : "Target: Keep Active")
-                            .font(.caption2)
-                            .foregroundColor(isTargetDisabled ? .orange : .green)
-                    }
+                    Text(isTargetDisabled ? "Target: Disabled (RAM Saver)" : "Target: Keep Active")
+                        .font(.caption2)
+                        .foregroundColor(isTargetDisabled ? (isCritical ? .red : .orange) : .green)
                 }
 
                 Spacer()
 
-                if isCritical {
-                    // Protected by SafetyManager: Locked
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundColor(.red)
-                        .font(.system(size: 18))
-                } else {
-                    Toggle("", isOn: Binding(
-                        get: { !isTargetDisabled },
-                        set: { presets.setTargetState(for: service.label, disable: !$0) }
-                    ))
-                    .labelsHidden()
-                    .tint(.green)
-                }
+                Toggle("", isOn: Binding(
+                    get: { !isTargetDisabled },
+                    set: { presets.setTargetState(for: service.label, disable: !$0) }
+                ))
+                .labelsHidden()
+                .tint(isCritical ? .orange : .green)
             }
             .contentShape(Rectangle())
             .onTapGesture { withAnimation { isExpanded.toggle() } }

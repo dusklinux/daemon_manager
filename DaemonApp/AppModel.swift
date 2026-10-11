@@ -273,25 +273,29 @@ final class AppModel: ObservableObject {
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
         let pwd = self.rootPassword
-        // Strictly filter out any critical services to prevent bootloops
-        let safeOps = operations.filter { !SafetyManager.isCritical($0.service.label) }
-        let total = safeOps.count
+        let total = operations.count
         
         guard total > 0 else {
-            statusMessage = "All requested daemons are protected or already match target state."
+            statusMessage = "All requested daemons already match target state."
             return
         }
+
+        let criticalCount = operations.filter { SafetyManager.isCritical($0.service.label) && $0.disable }.count
 
         DispatchQueue.main.async {
             self.isApplyingConfig = true
             self.showLogConsole = true
-            self.liveLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
+            var startLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
+            if criticalCount > 0 {
+                startLog += "[!] CAUTION: \(criticalCount) critical system daemon(s) included in disable batch.\n"
+            }
+            self.liveLog = startLog
             self.applyProgressText = "\(title) [0/\(total)]"
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
             var batchPairs: [String] = []
-            for op in safeOps {
+            for op in operations {
                 let domain = op.service.domain ?? "system"
                 let act = op.disable ? "disable" : "enable"
                 batchPairs.append("(\"\(op.service.label)\", \"\(act)\", \"\(domain)\")")

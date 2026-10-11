@@ -9,6 +9,7 @@ struct DaemonAppEntry: App {
             MainView()
                 .environmentObject(model)
                 .preferredColorScheme(model.isDarkTheme ? .dark : .light)
+                .statusBarHidden(true)
         }
     }
 }

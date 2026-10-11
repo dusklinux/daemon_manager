@@ -1693,9 +1693,6 @@ final class DefaultPresets: ObservableObject {
     }
 
     func targetState(for label: String) -> Bool {
-        if SafetyManager.isCritical(label) {
-            return false // NEVER target critical daemons to disable!
-        }
         if let val = customDefaults[label] {
             return val
         }
@@ -1703,9 +1700,6 @@ final class DefaultPresets: ObservableObject {
     }
 
     func setTargetState(for label: String, disable: Bool) {
-        if SafetyManager.isCritical(label) {
-            return // Refuse to set target to disable for critical daemon!
-        }
         customDefaults[label] = disable
     }
 
