@@ -277,12 +277,13 @@ struct LiveServiceRow: View {
     private var isProcessing: Bool { model.isProcessing.contains(service.id) }
     private var isCurrentlyDisabled: Bool { model.isDisabled(service) ?? false }
     private var isMatch: Bool { isCurrentlyDisabled == targetDisabled }
+    private var isCritical: Bool { SafetyManager.isCritical(service.label) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
                 Circle()
-                    .fill(isCurrentlyDisabled ? Color.red : Color.green)
+                    .fill(isCritical ? Color.red : (isCurrentlyDisabled ? Color.orange : Color.green))
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -292,13 +293,21 @@ struct LiveServiceRow: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
-                        // Target state indicator badge
-                        Text(targetDisabled ? "TARGET: OFF" : "TARGET: ON")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 4).padding(.vertical, 2)
-                            .background(isMatch ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
-                            .foregroundColor(isMatch ? .green : .orange)
-                            .clipShape(Capsule())
+                        if isCritical {
+                            Text("⛔ CRITICAL: DO NOT DISABLE")
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.red.opacity(0.2))
+                                .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        } else {
+                            Text(targetDisabled ? "TARGET: OFF" : "TARGET: ON")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 4).padding(.vertical, 2)
+                                .background(isMatch ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
+                                .foregroundColor(isMatch ? .green : .orange)
+                                .clipShape(Capsule())
+                        }
                     }
 
                     Text(service.metadataText)
@@ -310,6 +319,12 @@ struct LiveServiceRow: View {
 
                 if isProcessing {
                     ProgressView().frame(width: 44)
+                } else if isCritical {
+                    // Protected system daemon: Locked to prevent accidental disablement
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 20))
+                        .frame(width: 44)
                 } else {
                     Toggle("", isOn: Binding(
                         get: { !isCurrentlyDisabled },
@@ -324,10 +339,20 @@ struct LiveServiceRow: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
-                    if let warn = SafetyManager.warning(for: service.label) {
+                    if isCritical {
                         HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
-                            Text(warn).font(.caption2.bold()).foregroundColor(.red)
+                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(.red)
+                            Text("CRITICAL: \(SafetyManager.warning(for: service.label) ?? "Core system daemon. Disabling will cause bootloop, CPU spikes, or loss of device access.")")
+                                .font(.caption2.bold())
+                                .foregroundColor(.red)
+                        }
+                        .padding(6)
+                        .background(Color.red.opacity(0.12))
+                        .cornerRadius(6)
+                    } else if let warn = SafetyManager.warning(for: service.label) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                            Text(warn).font(.caption2.bold()).foregroundColor(.orange)
                         }
                     }
                     Text(DaemonDescriptions.get(for: service.label))
@@ -399,6 +424,20 @@ struct DefaultsConfigView: View {
                     .disabled(model.isApplyingConfig)
                 }
 
+                // Guide / Explanatory Banner
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "questionmark.circle.fill").foregroundColor(.blue)
+                        Text("How to Configure & Apply Defaults").font(.caption.bold())
+                    }
+                    Text("• Configure targets below: 'Disabled (RAM Saver)' turns off on apply; 'Keep Active' stays running.\n• Tap 'Apply Defaults' to batch-apply all targets without waiting.\n• Daemons marked ⛔ CRITICAL are protected core services permanently locked to Keep Active.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(10)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(10)
+
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                     TextField("Search preset targets...", text: $searchText)
@@ -438,6 +477,7 @@ struct DefaultsRow: View {
     let service: LaunchdService
     @State private var isExpanded = false
 
+    private var isCritical: Bool { SafetyManager.isCritical(service.label) }
     private var isTargetDisabled: Bool {
         presets.targetState(for: service.label)
     }
@@ -446,29 +486,64 @@ struct DefaultsRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(service.label)
-                        .font(.system(.subheadline, design: .monospaced, weight: .semibold))
-                        .lineLimit(1)
-                    Text(isTargetDisabled ? "Target: Disabled (RAM Saver)" : "Target: Keep Active")
-                        .font(.caption2)
-                        .foregroundColor(isTargetDisabled ? .orange : .green)
+                    HStack(spacing: 6) {
+                        Text(service.label)
+                            .font(.system(.subheadline, design: .monospaced, weight: .semibold))
+                            .lineLimit(1)
+
+                        if isCritical {
+                            Text("⛔ CRITICAL")
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.red.opacity(0.2))
+                                .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if isCritical {
+                        Text("Protected Core Daemon • Always Kept Active")
+                            .font(.caption2.bold())
+                            .foregroundColor(.red)
+                    } else {
+                        Text(isTargetDisabled ? "Target: Disabled (RAM Saver)" : "Target: Keep Active")
+                            .font(.caption2)
+                            .foregroundColor(isTargetDisabled ? .orange : .green)
+                    }
                 }
 
                 Spacer()
 
-                // Toggle Default Target: OFF = Disable, ON = Keep Active
-                Toggle("", isOn: Binding(
-                    get: { !isTargetDisabled },
-                    set: { presets.setTargetState(for: service.label, disable: !$0) }
-                ))
-                .labelsHidden()
-                .tint(.green)
+                if isCritical {
+                    // Protected by SafetyManager: Locked
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 18))
+                } else {
+                    Toggle("", isOn: Binding(
+                        get: { !isTargetDisabled },
+                        set: { presets.setTargetState(for: service.label, disable: !$0) }
+                    ))
+                    .labelsHidden()
+                    .tint(.green)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture { withAnimation { isExpanded.toggle() } }
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
+                    if isCritical {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(.red)
+                            Text("CRITICAL: \(SafetyManager.warning(for: service.label) ?? "Core system service. Must remain enabled.")")
+                                .font(.caption2.bold())
+                                .foregroundColor(.red)
+                        }
+                        .padding(6)
+                        .background(Color.red.opacity(0.12))
+                        .cornerRadius(6)
+                    }
                     Text(DaemonDescriptions.get(for: service.label))
                         .font(.caption)
                         .foregroundColor(.secondary)

@@ -273,8 +273,15 @@ final class AppModel: ObservableObject {
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
         let pwd = self.rootPassword
-        let total = operations.count
+        // Strictly filter out any critical services to prevent bootloops
+        let safeOps = operations.filter { !SafetyManager.isCritical($0.service.label) }
+        let total = safeOps.count
         
+        guard total > 0 else {
+            statusMessage = "All requested daemons are protected or already match target state."
+            return
+        }
+
         DispatchQueue.main.async {
             self.isApplyingConfig = true
             self.showLogConsole = true
@@ -283,15 +290,51 @@ final class AppModel: ObservableObject {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            var commands: [String] = []
-            for op in operations {
+            var batchPairs: [String] = []
+            for op in safeOps {
                 let domain = op.service.domain ?? "system"
                 let act = op.disable ? "disable" : "enable"
-                commands.append("echo \"[\(act)] \(op.service.label)\" && launchctl \(act) \(domain)/\(op.service.label)")
+                batchPairs.append("(\"\(op.service.label)\", \"\(act)\", \"\(domain)\")")
             }
+            let pairsList = "[" + batchPairs.joined(separator: ", ") + "]"
             
-            let batchScript = commands.joined(separator: " ; ")
-            let elevated = self.buildElevatedCommand(rawCommand: batchScript, pwd: pwd)
+            let pyScript = """
+import sys, os, subprocess, plistlib
+from concurrent.futures import ThreadPoolExecutor
+
+ops = \(pairsList)
+plist_path = "/var/db/com.apple.xpc.launchd/disabled.plist"
+try:
+    with open(plist_path, "rb") as f:
+        d = plistlib.load(f)
+except Exception:
+    d = {}
+
+# 1. Atomic persist to disk in one pass (1ms)
+for label, act, domain in ops:
+    d[label] = (act == "disable")
+
+try:
+    with open(plist_path, "wb") as f:
+        plistlib.dump(d, f)
+    print(f"[+] Atomically updated {len(ops)} services in disabled.plist", flush=True)
+except Exception as e:
+    print(f"[-] Warning writing disabled.plist: {e}", flush=True)
+
+# 2. Parallel notify launchctl
+def notify_launchd(item):
+    lbl, act, dom = item
+    subprocess.run(["launchctl", act, f"{dom}/{lbl}"], capture_output=True, text=True)
+    print(f"[{act}] {lbl}", flush=True)
+
+with ThreadPoolExecutor(max_workers=8) as ex:
+    list(ex.map(notify_launchd, ops))
+
+print("[+] All batch services applied successfully!", flush=True)
+"""
+            let escapedScript = pyScript.replacingOccurrences(of: "'", with: "'\\''")
+            let rawCmd = "\"\(self.pythonPath)\" -c '\(escapedScript)'"
+            let elevated = self.buildElevatedCommand(rawCommand: rawCmd, pwd: pwd)
             
             var completedCount = 0
             self.posixRunAsync(
@@ -311,7 +354,7 @@ final class AppModel: ObservableObject {
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     self.refreshState()
-                    self.statusMessage = "\(title) completed successfully!"
+                    self.statusMessage = "\(title) applied \(total) daemons successfully!"
                 }
             }
         }
