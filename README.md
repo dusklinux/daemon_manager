@@ -4,7 +4,7 @@ SwiftUI service/preset manager for jailbroken iOS 16+, built with XcodeGen and i
 
 Tap a service name or chevron for its known description, launchd plist and executable paths, and related file metadata where verified. Contacts-related services show the address-book database paths, sizes, and modification dates without reading contact records. Uncertain private roles are omitted. The independent switch edits the saved launchd override; restart userspace for full loaded-process changes.
 
-The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The measurement remains free + speculative memory; it is not a new physical-free metric.
+The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The header is kernel free memory including speculative pages, with each page counted once. Tap it for a live memory sheet.
 
 `daemon.cfg` matches all 504 builtin targets: **320 off, 184 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
 
@@ -52,3 +52,13 @@ Discover the helper path on other installations. `appinst /path/to/DaemonApp.ipa
 **Recommended On** services have orange guidance and toggle directly without the critical confirmation. Messages dependencies are recommendations, not newly classified bootloop services. Their explanations document feature and dependency consequences, including repeated Identity Services crashes if nehelper is disabled while Identity Services is enabled.
 
 All 504 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
+
+## Memory and list organization
+
+Services groups non-critical entries first and critical entries at the bottom under every filter, including On. The separate Critical tab still retains its disabled-first ordering.
+
+Tap the RAM indicator for system pressure, physical RAM, physical free, speculative, active/inactive/wired, purgeable, file-backed/anonymous memory, and compression statistics. Compressed occupancy is the physical RAM used by the compressor; original stored-page size and their ratio are shown separately. Overlapping categories are not additive. Values refresh on the existing two-second timer; failed reads show unavailable values.
+
+The old header added speculative pages twice: XNU's `free_count` already includes them. It now displays `free_count`, while physical free is `free_count - speculative_count`. This corrects accounting and does not represent a performance change. See [Apple's iOS 16 kernel implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/osfmk/kern/host.c) and [VM counter definitions](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/osfmk/mach/vm_statistics.h).
+
+Pressure uses [Dispatch memory-pressure events](https://developer.apple.com/documentation/dispatch/dispatchsource/makememorypressuresource%28eventmask%3Aqueue%3A%29), seeded on opening/refresh by `kern.memorystatus_vm_pressure_level`. The current sysctl requires privilege on the tested iOS 16 phone, so the existing root credential is used once when needed. This is not periodic privileged polling. Returned flags are Normal=1, Warning=2, Critical=4; [the kernel exports dispatch flags, not its internal enum](https://github.com/apple-oss-distributions/xnu/blob/xnu-8796.141.3/bsd/kern/kern_memorystatus_notify.c). Unknown readings stay unknown; no pressure percentage is fabricated. The header color reflects the reported pressure instead of hardcoded free-RAM thresholds. Opening memory details never changes a daemon override.

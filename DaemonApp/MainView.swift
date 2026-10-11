@@ -11,20 +11,26 @@ struct MainView: View {
     @State private var pendingToggleService: LaunchdService? = nil
     @State private var pendingToggleAction: Bool = false
     @State private var showSafetyAlert = false
+    @State private var showMemoryDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
             // TOP STATUS BAR: RAM Usage & Quick Info
             HStack(spacing: 12) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(ramColor)
-                        .frame(width: 10, height: 10)
-                    Text(model.ramUsageText)
-                        .font(.system(.subheadline, design: .monospaced, weight: .bold))
-                        .foregroundColor(ramColor)
+                Button { showMemoryDetails = true } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(ramColor).frame(width: 10, height: 10)
+                        Text(model.ramUsageText)
+                            .font(.system(.subheadline, design: .monospaced, weight: .bold))
+                            .foregroundColor(ramColor)
+                        Image(systemName: "chevron.down").font(.caption2).foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
-                
+                .buttonStyle(.plain)
+                .accessibilityLabel("Memory details, \(model.ramUsageText)")
+
                 Spacer()
 
                 if model.isApplyingConfig {
@@ -116,6 +122,12 @@ struct MainView: View {
                 }
             }
         }
+        .sheet(isPresented: $showMemoryDetails) {
+            MemoryDetailsView()
+                .environmentObject(model)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
             switch result {
             case .success(let url):
@@ -170,9 +182,12 @@ struct MainView: View {
     }
 
     private var ramColor: Color {
-        if model.freeRAMMB > 600 { return .green }
-        if model.freeRAMMB > 350 { return .orange }
-        return .red
+        switch model.memoryPressure {
+        case .normal: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        case nil: return .secondary
+        }
     }
 }
 
@@ -273,21 +288,38 @@ struct LiveServicesView: View {
                     .font(.subheadline)
                 Spacer()
             } else {
-                List(filteredServices) { service in
-                    LiveServiceRow(
-                        service: service,
-                        targetDisabled: presets.targetState(for: service.label),
-                        onToggle: { enable in
-                            if !enable && SafetyManager.requiresWarning(service.label) {
-                                onSafetyPrompt(service, enable)
-                            } else {
-                                model.toggleDaemon(service, enable: enable)
-                            }
+                List {
+                    if criticalOnly {
+                        serviceRows(filteredServices)
+                    } else {
+                        let ordinary = filteredServices.filter { !SafetyManager.isCritical($0.label) }
+                        let critical = filteredServices.filter { SafetyManager.isCritical($0.label) }
+                        if !ordinary.isEmpty {
+                            Section("Non-critical services") { serviceRows(ordinary) }
                         }
-                    )
+                        if !critical.isEmpty {
+                            Section("Critical — also in the Critical tab") { serviceRows(critical) }
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
+        }
+    }
+
+    private func serviceRows(_ list: [LaunchdService]) -> some View {
+        ForEach(list) { service in
+            LiveServiceRow(
+                service: service,
+                targetDisabled: presets.targetState(for: service.label),
+                onToggle: { enable in
+                    if !enable && SafetyManager.requiresWarning(service.label) {
+                        onSafetyPrompt(service, enable)
+                    } else {
+                        model.toggleDaemon(service, enable: enable)
+                    }
+                }
+            )
         }
     }
 

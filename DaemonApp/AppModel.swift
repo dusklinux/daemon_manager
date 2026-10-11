@@ -48,6 +48,11 @@ final class AppModel: ObservableObject {
 
     @Published var ramUsageText = "… MiB"
     @Published var freeRAMMB: Double = 0.0
+    @Published private(set) var memorySnapshot: MemorySnapshot?
+    @Published private(set) var memoryPressure: MemoryPressure?
+    @Published private(set) var isReadingMemoryPressure = false
+    private var pressureSource: DispatchSourceMemoryPressure?
+    private var pressureRevision = 0
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
     @Published var statusMessage: String?
@@ -99,6 +104,7 @@ final class AppModel: ObservableObject {
 
         validateEnvironment()
         startRAMTimer()
+        startMemoryPressureMonitoring()
         fetchAllDaemons()
         refreshState()
         loadInitialConfig()
@@ -106,6 +112,7 @@ final class AppModel: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        pressureSource?.cancel()
     }
 
     func refreshAll() {
@@ -145,23 +152,62 @@ final class AppModel: ObservableObject {
     }
 
     private func updateRAMUsage() {
-        let hostPort = mach_host_self()
-        defer { mach_port_deallocate(mach_task_self_, hostPort) }
-        var pageSize: vm_size_t = 0
-        guard host_page_size(hostPort, &pageSize) == KERN_SUCCESS else { return }
-        var vmStats = vm_statistics64()
-        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
-        let status = withUnsafeMutablePointer(to: &vmStats) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
-            }
+        // Refreshing failure must not leave a stale value looking live.
+        let snapshot = MemorySnapshot.read()
+        memorySnapshot = snapshot
+        freeRAMMB = snapshot?.freeAndSpeculativeMiB ?? 0
+        ramUsageText = snapshot.map { String(format: "%.0f MiB", $0.freeAndSpeculativeMiB) } ?? "— MiB"
+    }
+
+    private func startMemoryPressureMonitoring() {
+        memoryPressure = MemoryPressure.read()
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.normal, .warning, .critical], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let flags = source?.data else { return }
+            if flags.contains(.critical) { self.memoryPressure = .critical }
+            else if flags.contains(.warning) { self.memoryPressure = .warning }
+            else if flags.contains(.normal) { self.memoryPressure = .normal }
+            self.pressureRevision += 1
         }
-        guard status == KERN_SUCCESS else { return }
-        let freeBytes = Double(vmStats.free_count + vmStats.speculative_count) * Double(pageSize)
-        let freeMB = freeBytes / 1_048_576.0
-        DispatchQueue.main.async {
-            self.freeRAMMB = freeMB
-            self.ramUsageText = String(format: "%.0f MiB", freeMB)
+        pressureSource = source
+        source.activate()
+    }
+
+    func refreshMemoryDetails() {
+        updateRAMUsage()
+        guard !isReadingMemoryPressure else { return }
+        if let pressure = MemoryPressure.read() {
+            memoryPressure = pressure
+            pressureRevision += 1
+            return
+        }
+        // iOS restricts the current-pressure sysctl to privileged callers.
+        // Seed the live notification monitor once per panel opening/refresh.
+        isReadingMemoryPressure = true
+        let revision = pressureRevision
+        let script = #"""
+import ctypes as c
+lib = c.CDLL(None)
+value = c.c_int32()
+size = c.c_size_t(4)
+rc = lib.sysctlbyname(b"kern.memorystatus_vm_pressure_level", c.byref(value), c.byref(size), None, 0)
+if rc == 0:
+    print("pressure=" + str(value.value))
+"""#
+        let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
+        DispatchQueue.global(qos: .utility).async {
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let line = result.output.split(separator: "\n").first { $0.hasPrefix("pressure=") }
+            let value = line.flatMap { Int32($0.dropFirst("pressure=".count)) }
+            let pressure = value.flatMap { MemoryPressure(rawValue: $0) }
+            DispatchQueue.main.async {
+                self.isReadingMemoryPressure = false
+                // A newer live event takes precedence over the initial read.
+                if self.pressureRevision == revision, result.exitCode == 0, let pressure {
+                    self.memoryPressure = pressure
+                    self.pressureRevision += 1
+                }
+            }
         }
     }
 
@@ -594,7 +640,7 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.async { self.errorMessage = message }
     }
     
-    private func posixRunAsync(executable: String, args: [String], onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
+    private func posixRunAsync(executable: String, args: [String], trackProcess: Bool = true, onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
         var envDict = ProcessInfo.processInfo.environment
@@ -627,7 +673,7 @@ final class AppModel: ObservableObject {
             onCompletion(-1)
             return
         }
-        self.currentPid = pid
+        if trackProcess { self.currentPid = pid }
         let fd = outPipe[0]
         fcntl(fd, F_SETFL, O_NONBLOCK)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue.global())
@@ -645,18 +691,18 @@ final class AppModel: ObservableObject {
             waitpid(pid, &status, 0)
             let finalCode = self.decodeWaitStatus(status)
             DispatchQueue.main.async {
-                self.currentPid = nil
+                if trackProcess && self.currentPid == pid { self.currentPid = nil }
                 onCompletion(finalCode)
             }
         }
         source.resume()
     }
 
-    private func posixRunSync(executable: String, args: [String]) -> (exitCode: Int32, output: String) {
+    private func posixRunSync(executable: String, args: [String], trackProcess: Bool = true) -> (exitCode: Int32, output: String) {
         let semaphore = DispatchSemaphore(value: 0)
         var fullOutput = ""
         var finalCode: Int32 = -1
-        posixRunAsync(executable: executable, args: args) { text in fullOutput += text } onCompletion: { code in
+        posixRunAsync(executable: executable, args: args, trackProcess: trackProcess) { text in fullOutput += text } onCompletion: { code in
             finalCode = code
             semaphore.signal()
         }
