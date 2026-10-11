@@ -75,16 +75,22 @@ struct MainView: View {
                     )
                     .tabItem { Label("Services", systemImage: "cpu") }
                     .tag(0)
+                    .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
 
                     // TAB 2: Defaults & Presets (Requested by User)
                     DefaultsConfigView()
                         .tabItem { Label("Defaults", systemImage: "slider.horizontal.3") }
                         .tag(1)
+                        .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
+                        .toolbarBackground(.visible, for: .tabBar)
 
                     // TAB 3: Config Import & Export
                     ConfigBatchView(showFilePicker: $showFilePicker)
                         .tabItem { Label("Config", systemImage: "doc.text") }
                         .tag(2)
+                        .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
+                        .toolbarBackground(.visible, for: .tabBar)
 
                     // TAB 4: Tools & Recovery (From Geranium)
                     ToolsRecoveryView(
@@ -93,6 +99,8 @@ struct MainView: View {
                     )
                     .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
                     .tag(3)
+                    .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
                 }
             }
         }
@@ -105,7 +113,7 @@ struct MainView: View {
             }
         }
         .alert(
-            "Critical Daemon Warning",
+            "Service Disable Warning",
             isPresented: $showSafetyAlert,
             presenting: pendingToggleService
         ) { service in
@@ -116,16 +124,16 @@ struct MainView: View {
                 pendingToggleService = nil
             }
         } message: { service in
-            Text("WARNING: Disabling \(service.label) is dangerous!\n\n\(SafetyManager.warning(for: service.label) ?? "This is a protected system service.")\n\nAre you sure you want to proceed?")
+            Text("\(service.label)\n\n\(SafetyManager.warning(for: service.label) ?? "Keep this system service enabled.")")
         }
         .alert("Reset Defaults", isPresented: $showResetDefaultsAlert) {
             Button("Reset to Builtin", role: .destructive) {
                 presets.resetToBuiltin()
-                model.statusMessage = "Target defaults reset to curated 498 daemon presets."
+                model.statusMessage = "Target defaults reset to \(DefaultPresets.builtinDefaults.count) builtin presets."
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will restore all default targets back to the curated daemon.cfg presets (331 RAM-saver targets).")
+            Text("Restore \(DefaultPresets.builtinDefaults.count) builtin targets, including \(DefaultPresets.builtinDefaults.values.filter { $0 }.count) default-off entries. Saved custom target choices will be cleared.")
         }
         .alert("Emergency Factory Reset", isPresented: $showEmergencyResetAlert) {
             Button("Reset Launchd State", role: .destructive) {
@@ -166,7 +174,7 @@ struct LiveServicesView: View {
 
     enum FilterType: String, CaseIterable {
         case all = "All"
-        case active = "Active"
+        case active = "Enabled"
         case disabled = "Disabled"
         case mismatch = "Mismatch"
     }
@@ -178,12 +186,12 @@ struct LiveServicesView: View {
         }
         switch filter {
         case .all: return list
-        case .active: return list.filter { (model.isDisabled($0) ?? false) == false }
+        case .active: return list.filter { model.isDisabled($0) == false }
         case .disabled: return list.filter { (model.isDisabled($0) ?? false) == true }
         case .mismatch:
             return list.filter { service in
                 let targetDisabled = presets.targetState(for: service.label)
-                let currentlyDisabled = model.isDisabled(service) ?? false
+                guard let currentlyDisabled = model.isDisabled(service) else { return false }
                 return currentlyDisabled != targetDisabled
             }
         }
@@ -236,7 +244,7 @@ struct LiveServicesView: View {
                         service: service,
                         targetDisabled: presets.targetState(for: service.label),
                         onToggle: { enable in
-                            if !enable && SafetyManager.isCritical(service.label) {
+                            if !enable && SafetyManager.requiresWarning(service.label) {
                                 onSafetyPrompt(service, enable)
                             } else {
                                 model.toggleDaemon(service, enable: enable)
@@ -253,7 +261,7 @@ struct LiveServicesView: View {
         switch f {
         case .all: return "All (\(model.allDaemons.count))"
         case .active:
-            let c = model.allDaemons.filter { (model.isDisabled($0) ?? false) == false }.count
+            let c = model.allDaemons.filter { model.isDisabled($0) == false }.count
             return "On (\(c))"
         case .disabled:
             let c = model.allDaemons.filter { (model.isDisabled($0) ?? false) == true }.count
@@ -263,7 +271,7 @@ struct LiveServicesView: View {
                 let target = presets.targetState(for: $0.label)
                 return (model.isDisabled($0) ?? false) != target
             }.count
-            return "Opt (\(c))"
+            return "Changes (\(c))"
         }
     }
 }
@@ -276,92 +284,73 @@ struct LiveServiceRow: View {
     @State private var isExpanded = false
 
     private var isProcessing: Bool { model.isProcessing.contains(service.id) }
-    private var isCurrentlyDisabled: Bool { model.isDisabled(service) ?? false }
-    private var isMatch: Bool { isCurrentlyDisabled == targetDisabled }
-    private var isCritical: Bool { SafetyManager.isCritical(service.label) }
+    private var currentState: Bool? { model.isDisabled(service) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Circle()
-                    .fill(isCritical ? Color.red : (isCurrentlyDisabled ? Color.orange : Color.green))
-                    .frame(width: 8, height: 8)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(service.label)
-                            .font(.system(.subheadline, design: .monospaced, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-
-                        if isCritical {
-                            Text("⛔ CRITICAL: DO NOT DISABLE")
-                                .font(.system(size: 8, weight: .black, design: .monospaced))
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Color.red.opacity(0.2))
-                                .foregroundColor(.red)
-                                .clipShape(Capsule())
-                        } else {
-                            Text(targetDisabled ? "TARGET: OFF" : "TARGET: ON")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 4).padding(.vertical, 2)
-                                .background(isMatch ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
-                                .foregroundColor(isMatch ? .green : .orange)
-                                .clipShape(Capsule())
+                Button {
+                    withAnimation { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(SafetyManager.requiresWarning(service.label) ? Color.red :
+                                  (currentState == nil ? Color.gray : (currentState == true ? Color.orange : Color.green)))
+                            .frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(service.label)
+                                .font(.system(.subheadline, design: .monospaced, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ServiceWarningBadge(label: service.label)
+                            Text(currentState == nil ? "Loading override state…" :
+                                 (currentState == true ? "Disabled override" : "Not disabled by override"))
+                                .font(.caption).foregroundColor(.secondary)
+                            Text(targetDisabled ? "Default target: Off" : "Default target: On")
+                                .font(.caption2)
+                                .foregroundColor(currentState == targetDisabled ? .secondary : .orange)
                         }
+                        Spacer(minLength: 0)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption).foregroundColor(.secondary)
                     }
-
-                    Text(service.metadataText)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    .contentShape(Rectangle())
                 }
-
-                Spacer()
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(isExpanded ? "Hide" : "Show") details for \(service.label)")
 
                 if isProcessing {
                     ProgressView().frame(width: 44)
                 } else {
-                    Toggle("", isOn: Binding(
-                        get: { !isCurrentlyDisabled },
+                    Toggle("Enable \(service.label)", isOn: Binding(
+                        get: { currentState != true },
                         set: { onToggle($0) }
                     ))
                     .labelsHidden()
-                    .tint(isCritical ? .orange : .green)
+                    .tint(.green)
+                    .disabled(!model.canToggle(service))
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { withAnimation { isExpanded.toggle() } }
-
             if isExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    if isCritical {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(.red)
-                            Text("CRITICAL: \(SafetyManager.warning(for: service.label) ?? "Core system daemon. Disabling will cause bootloop, CPU spikes, or loss of device access.")")
-                                .font(.caption2.bold())
-                                .foregroundColor(.red)
-                        }
-                        .padding(6)
-                        .background(Color.red.opacity(0.12))
-                        .cornerRadius(6)
-                    } else if let warn = SafetyManager.warning(for: service.label) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
-                            Text(warn).font(.caption2.bold()).foregroundColor(.orange)
-                        }
-                    }
-                    Text(DaemonDescriptions.get(for: service.label))
-                        .font(.caption)
-                        .foregroundColor(.primary)
-                    if let path = service.plistPath {
-                        Text(path).font(.caption2).foregroundColor(.secondary).textSelection(.enabled)
-                    }
-                }
-                .padding(.leading, 20)
-                .padding(.vertical, 4)
+                ServiceDetailsView(service: service)
+                    .padding(.leading, 18)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+    }
+}
+
+struct ServiceWarningBadge: View {
+    let label: String
+    var body: some View {
+        if SafetyManager.requiresWarning(label) {
+            Text(SafetyManager.isCritical(label) ? "⛔ CRITICAL: KEEP ENABLED" : "⚠ KEEP ENABLED")
+                .font(.system(size: 10, weight: .bold))
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .foregroundColor(.red)
+                .background(Color.red.opacity(0.12))
+                .clipShape(Capsule())
+        }
     }
 }
 
@@ -403,9 +392,9 @@ struct DefaultsConfigView: View {
             VStack(spacing: 10) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Target RAM Presets")
+                        Text("Default targets")
                             .font(.headline.bold())
-                        Text("\(model.allDaemons.count) daemons • \(unoptimizedCount) pending optimization")
+                        Text("\(model.allDaemons.count) daemons • \(unoptimizedCount) pending changes")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -416,9 +405,11 @@ struct DefaultsConfigView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
-                    .disabled(model.isApplyingConfig)
+                    .disabled(model.isApplyingConfig || model.isRefreshingState || model.isScanningDaemons)
                 }
 
+                Text("Overrides take full effect after a userspace restart. Changing a target here does not change the phone until you apply it.")
+                    .font(.caption).foregroundColor(.secondary)
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                     TextField("Search preset targets...", text: $searchText)
@@ -458,71 +449,41 @@ struct DefaultsRow: View {
     let service: LaunchdService
     @State private var isExpanded = false
 
-    private var isCritical: Bool { SafetyManager.isCritical(service.label) }
-    private var isTargetDisabled: Bool {
-        presets.targetState(for: service.label)
-    }
+    private var isTargetDisabled: Bool { presets.targetState(for: service.label) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(service.label)
-                            .font(.system(.subheadline, design: .monospaced, weight: .semibold))
-                            .lineLimit(1)
-
-                        if isCritical {
-                            Text("⛔ CRITICAL")
-                                .font(.system(size: 8, weight: .black, design: .monospaced))
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Color.red.opacity(0.2))
-                                .foregroundColor(.red)
-                                .clipShape(Capsule())
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation { isExpanded.toggle() }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(service.label)
+                                .font(.system(.subheadline, design: .monospaced, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ServiceWarningBadge(label: service.label)
+                            Text(isTargetDisabled ? "Target: Off" : "Target: Keep enabled")
+                                .font(.caption).foregroundColor(isTargetDisabled ? .orange : .green)
                         }
+                        Spacer(minLength: 0)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption).foregroundColor(.secondary)
                     }
-
-                    Text(isTargetDisabled ? "Target: Disabled (RAM Saver)" : "Target: Keep Active")
-                        .font(.caption2)
-                        .foregroundColor(isTargetDisabled ? (isCritical ? .red : .orange) : .green)
+                    .contentShape(Rectangle())
                 }
-
-                Spacer()
-
-                Toggle("", isOn: Binding(
+                .buttonStyle(.plain)
+                Toggle("Keep \(service.label) enabled by default", isOn: Binding(
                     get: { !isTargetDisabled },
                     set: { presets.setTargetState(for: service.label, disable: !$0) }
                 ))
                 .labelsHidden()
-                .tint(isCritical ? .orange : .green)
+                .tint(.green)
             }
-            .contentShape(Rectangle())
-            .onTapGesture { withAnimation { isExpanded.toggle() } }
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 4) {
-                    if isCritical {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(.red)
-                            Text("CRITICAL: \(SafetyManager.warning(for: service.label) ?? "Core system service. Must remain enabled.")")
-                                .font(.caption2.bold())
-                                .foregroundColor(.red)
-                        }
-                        .padding(6)
-                        .background(Color.red.opacity(0.12))
-                        .cornerRadius(6)
-                    }
-                    Text(DaemonDescriptions.get(for: service.label))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if let path = service.plistPath {
-                        Text(path).font(.caption2).foregroundColor(.secondary)
-                    }
-                }
-                .padding(.top, 4)
-            }
+            if isExpanded { ServiceDetailsView(service: service) }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 }
 
@@ -678,7 +639,7 @@ struct ToolsRecoveryView: View {
                     Text("Recovery & Reset")
                         .font(.headline)
 
-                    Text("Reset your targets back to the curated 498-daemon presets, or perform an emergency recovery if any services malfunction.")
+                    Text("Reset target choices to the \(DefaultPresets.builtinDefaults.count) builtin presets, or recover launchd overrides if services malfunction.")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 

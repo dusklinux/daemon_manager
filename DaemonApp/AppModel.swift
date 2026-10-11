@@ -13,6 +13,7 @@ struct LaunchdService: Identifiable, Hashable {
     let plistPath: String?
     let domain: String?
     let kind: Kind
+    var executablePath: String? = nil
 
     var id: String {
         if let domain, let plistPath { return "\(domain)|\(plistPath)" }
@@ -127,7 +128,7 @@ final class AppModel: ObservableObject {
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        service.domain != nil && disabledServices != nil
+        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isProcessing.contains(service.id)
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
@@ -160,7 +161,7 @@ final class AppModel: ObservableObject {
         let freeMB = freeBytes / 1_048_576.0
         DispatchQueue.main.async {
             self.freeRAMMB = freeMB
-            self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB)
+            self.ramUsageText = String(format: "Free + speculative: %.0f MiB", freeMB)
         }
     }
 
@@ -218,20 +219,11 @@ final class AppModel: ObservableObject {
     func toggleDaemon(_ service: LaunchdService, enable: Bool) {
         guard canToggle(service) else { return }
         let pwd = self.rootPassword
-        let domain = service.domain ?? "system"
         let action = enable ? "enable" : "disable"
         
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let cmd: String
-            if self.daemonManagerAvailable {
-                // If custom script is present, use it
-                cmd = "\"\(self.rootlessShellPath)\" \"\(self.daemonManagerPath)\" \(action) \"\(service.label)\""
-            } else {
-                // Standalone native launchctl execution
-                cmd = "launchctl \(action) \(domain)/\(service.label)"
-            }
-            
+            let cmd = self.nativeOverrideCommand(operations: [(service, !enable)])
             let elevated = self.buildElevatedCommand(rawCommand: cmd, pwd: pwd)
             let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
             guard result.exitCode == 0 else {
@@ -244,13 +236,15 @@ final class AppModel: ObservableObject {
             self.refreshState {
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
+                    self.statusMessage = "Override saved. Restart userspace to apply the process change fully."
                 }
             }
         }
     }
 
-    // Batch apply curated defaults (498 items from daemon.cfg)
+    // Apply changed builtin or explicitly customized targets.
     func applyAllDefaults() {
+        guard disabledServices != nil, !isApplyingConfig else { return }
         let presets = DefaultPresets.shared
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         
@@ -273,6 +267,11 @@ final class AppModel: ObservableObject {
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
         let pwd = self.rootPassword
+        var seen = Set<DisabledServiceKey>()
+        let operations = operations.filter { op in
+            guard let domain = op.service.domain else { return false }
+            return seen.insert(DisabledServiceKey(domain: domain, label: op.service.label)).inserted
+        }
         let total = operations.count
         
         guard total > 0 else {
@@ -280,77 +279,38 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let criticalCount = operations.filter { SafetyManager.isCritical($0.service.label) && $0.disable }.count
+        let warningCount = operations.filter { SafetyManager.requiresWarning($0.service.label) && $0.disable }.count
 
         DispatchQueue.main.async {
             self.isApplyingConfig = true
             self.showLogConsole = true
             var startLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
-            if criticalCount > 0 {
-                startLog += "[!] CAUTION: \(criticalCount) critical system daemon(s) included in disable batch.\n"
+            if warningCount > 0 {
+                startLog += "[!] CAUTION: \(warningCount) services with keep-enabled warnings included in disable batch.\n"
             }
             self.liveLog = startLog
             self.applyProgressText = "\(title) [0/\(total)]"
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            var batchPairs: [String] = []
-            for op in operations {
-                let domain = op.service.domain ?? "system"
-                let act = op.disable ? "disable" : "enable"
-                batchPairs.append("(\"\(op.service.label)\", \"\(act)\", \"\(domain)\")")
-            }
-            let pairsList = "[" + batchPairs.joined(separator: ", ") + "]"
-            
-            let pyScript = """
-import sys, os, subprocess, plistlib
-from concurrent.futures import ThreadPoolExecutor
-
-ops = \(pairsList)
-plist_path = "/var/db/com.apple.xpc.launchd/disabled.plist"
-try:
-    with open(plist_path, "rb") as f:
-        d = plistlib.load(f)
-except Exception:
-    d = {}
-
-# 1. Atomic persist to disk in one pass (1ms)
-for label, act, domain in ops:
-    d[label] = (act == "disable")
-
-try:
-    with open(plist_path, "wb") as f:
-        plistlib.dump(d, f)
-    print(f"[+] Atomically updated {len(ops)} services in disabled.plist", flush=True)
-except Exception as e:
-    print(f"[-] Warning writing disabled.plist: {e}", flush=True)
-
-# 2. Parallel notify launchctl
-def notify_launchd(item):
-    lbl, act, dom = item
-    subprocess.run(["launchctl", act, f"{dom}/{lbl}"], capture_output=True, text=True)
-    print(f"[{act}] {lbl}", flush=True)
-
-with ThreadPoolExecutor(max_workers=8) as ex:
-    list(ex.map(notify_launchd, ops))
-
-print("[+] All batch services applied successfully!", flush=True)
-"""
-            let escapedScript = pyScript.replacingOccurrences(of: "'", with: "'\\''")
-            let rawCmd = "\"\(self.pythonPath)\" -c '\(escapedScript)'"
+            let rawCmd = self.nativeOverrideCommand(operations: operations)
             let elevated = self.buildElevatedCommand(rawCommand: rawCmd, pwd: pwd)
-            
+
             var completedCount = 0
+            var pendingOutput = ""
             self.posixRunAsync(
                 executable: elevated.executable,
                 args: elevated.arguments
             ) { liveText in
                 DispatchQueue.main.async {
                     self.liveLog += liveText
-                    if liveText.contains("[enable]") || liveText.contains("[disable]") {
-                        completedCount += 1
-                        self.applyProgressText = "\(title) [\(min(completedCount, total))/\(total)]"
+                    pendingOutput += liveText
+                    while let newline = pendingOutput.firstIndex(of: "\n") {
+                        let line = String(pendingOutput[..<newline])
+                        pendingOutput.removeSubrange(...newline)
+                        if line.hasPrefix("[done]") { completedCount += 1 }
                     }
+                    self.applyProgressText = "\(title) [\(min(completedCount, total))/\(total)]"
                 }
             } onCompletion: { exitCode in
                 DispatchQueue.main.async {
@@ -358,7 +318,12 @@ print("[+] All batch services applied successfully!", flush=True)
                     self.applyProgressText = nil
                     self.isApplyingConfig = false
                     self.refreshState()
-                    self.statusMessage = "\(title) applied \(total) daemons successfully!"
+                    if exitCode == 0 {
+                        self.statusMessage = "\(total) overrides saved. Restart userspace to apply the process changes fully."
+                    } else {
+                        self.statusMessage = nil
+                        self.errorMessage = "\(title) failed or only partially applied (exit \(exitCode)). Review the execution log."
+                    }
                 }
             }
         }
@@ -449,7 +414,7 @@ print("[+] All batch services applied successfully!", flush=True)
     }
 
     func applyImportedConfig() {
-        guard !targetStates.isEmpty else { return }
+        guard !targetStates.isEmpty, disabledServices != nil, !isApplyingConfig else { return }
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         for service in allDaemons {
             if let targetDisable = targetStates[service.label] {
@@ -469,6 +434,21 @@ print("[+] All batch services applied successfully!", flush=True)
             lines.append("\(service.label) \(isOff ? "yes" : "no")")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func nativeOverrideCommand(operations: [(service: LaunchdService, disable: Bool)]) -> String {
+        let items = operations.compactMap { op -> [String]? in
+            guard let domain = op.service.domain else { return nil }
+            return [op.service.label, op.disable ? "disable" : "enable", domain]
+        }
+        let data = try! JSONSerialization.data(withJSONObject: items)
+        let payload = data.base64EncodedString()
+        let script = NativeOverrides.script + "\nsys.exit(apply(json.loads(base64.b64decode('\(payload)'))))\n"
+        return "\(Self.shellQuote(pythonPath)) -c \(Self.shellQuote(script))"
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private func buildElevatedCommand(rawCommand: String, pwd: String) -> (executable: String, arguments: [String]) {
@@ -595,7 +575,9 @@ print("[+] All batch services applied successfully!", flush=True)
         let fallbackLabel = plistURL.deletingPathExtension().lastPathComponent
         let trimmedLabel = (plist["Label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = (trimmedLabel?.isEmpty == false) ? trimmedLabel! : fallbackLabel
-        return LaunchdService(label: label, plistPath: plistURL.path, domain: domain, kind: kind)
+        let arguments = plist["ProgramArguments"] as? [String]
+        return LaunchdService(label: label, plistPath: plistURL.path, domain: domain, kind: kind,
+                              executablePath: plist["Program"] as? String ?? arguments?.first)
     }
 
     private static func sortServices(_ lhs: LaunchdService, _ rhs: LaunchdService) -> Bool {

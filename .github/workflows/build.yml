@@ -21,6 +21,9 @@ jobs:
       - name: Install Build Tools
         run: brew install xcodegen ldid
 
+      - name: Check Presets and Override Failure Handling
+        run: python3 -m unittest discover -s tests -v
+
       - name: Generate Project & Compile
         run: |
           xcodegen generate
@@ -39,6 +42,15 @@ jobs:
           rm -rf Payload DaemonApp.ipa
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/DaemonApp.app Payload/
+          python3 - <<'PYCODE'
+          import os, plistlib
+          path = "Payload/DaemonApp.app/Info.plist"
+          with open(path, "rb") as source:
+              info = plistlib.load(source)
+          info["DaemonManagerSourceCommit"] = os.environ["GITHUB_SHA"]
+          with open(path, "wb") as destination:
+              plistlib.dump(info, destination)
+          PYCODE
           ldid -S"DaemonApp/entitlements.plist" Payload/DaemonApp.app/DaemonApp
           zip -qry DaemonApp.ipa Payload
 
@@ -51,8 +63,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Daemon Manager v1.0.0"
-          body: "Automated build of Daemon Manager for iOS 16+ (TrollStore / AppSync)."
+          tag_name: v1.0.1
+          target_commitish: ${{ github.sha }}
+          name: "Daemon Manager v1.0.1"
+          body: "iOS 16+ UI polish, service details, and revised defaults. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
-        continue-on-error: true

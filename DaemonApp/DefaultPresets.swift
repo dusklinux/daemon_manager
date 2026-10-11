@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
@@ -148,6 +149,23 @@ struct SafetyManager {
         "com.apple.launchd": "Core init process and system service manager.",
     ]
 
+    // Dependency/functionality warnings observed during the 2026-10-11 device test.
+    // These are recommendations, not claims that the services cause bootloops.
+    static let recommendedEnabled: [String: String] = [
+        "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
+        "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
+        "com.apple.syncdefaultsd": "Keep enabled for synchronized key-value preferences. This service provides com.apple.kvsd; multiple apps logged failed key-value-store access while it was off.",
+        "com.apple.mobile.lockdown": "Keep enabled for USB pairing, trust, computer backups, and host tools. Paired USB queries failed when it was off and worked after it was restored. USB charging and port-forwarded SSH are separate functions."
+    ]
+
+    static func requiresWarning(_ label: String) -> Bool {
+        isCritical(label) || recommendation(for: label) != nil
+    }
+
+    static func recommendation(for label: String) -> String? {
+        recommendedEnabled[label] ?? recommendedEnabled["com.apple.\(label)"]
+    }
+
     static func isCritical(_ label: String) -> Bool {
         if criticalServices[label] != nil { return true }
         if criticalServices["com.apple.\(label)"] != nil { return true }
@@ -160,7 +178,7 @@ struct SafetyManager {
         if let w = criticalServices[label] { return w }
         if let w = criticalServices["com.apple.\(label)"] { return w }
         let stripped = label.replacingOccurrences(of: "com.apple.", with: "")
-        return criticalServices[stripped]
+        return criticalServices[stripped] ?? recommendation(for: label)
     }
 }
 
@@ -1158,13 +1176,14 @@ struct DaemonDescriptions {
         "xpc.roleaccountd": "Private Apple XPC/account-role daemon, unclear public role (Guideline: no)",
     ]
 
-    static func get(for label: String) -> String {
-        if let d = dict[label] { return d }
-        if let d = dict["com.apple.\(label)"] { return d }
-        let stripped = label.replacingOccurrences(of: "com.apple.", with: "")
-        if let d = dict[stripped] { return d }
-        return "Standard iOS launchd service."
+    static func get(for label: String) -> String? {
+        let stripped = label.hasPrefix("com.apple.") ? String(label.dropFirst(10)) : label
+        guard let description = dict[label] ?? dict["com.apple.\(label)"] ?? dict[stripped] else { return nil }
+        let text = description.lowercased()
+        guard !["unclear", "private apple", "not well documented", "not clearly documented", "not fully clear", "public role"].contains(where: text.contains) else { return nil }
+        return description.components(separatedBy: " (Guideline:").first
     }
+
 }
 
 final class DefaultPresets: ObservableObject {
@@ -1293,7 +1312,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.backupd": true,
         "com.apple.batteryintelligenced": true,
         "com.apple.betaenrollmentd": true,
-        "com.apple.biomed": true,
+        "com.apple.biomed": false,
         "com.apple.biomesyncd": true,
         "com.apple.biometrickitd.mesa": false,
         "com.apple.bird": true,
@@ -1493,7 +1512,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.mobile.installation_proxy": false,
         "com.apple.mobile.installd": false,
         "com.apple.mobile.keybagd": false,
-        "com.apple.mobile.lockdown": true,
+        "com.apple.mobile.lockdown": false,
         "com.apple.mobile.notification_proxy": true,
         "com.apple.mobile.obliteration": true,
         "com.apple.mobile.softwareupdated": true,
@@ -1587,7 +1606,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.safetyalertsd": false,
         "com.apple.screensharingserver": true,
         "com.apple.scrod": true,
-        "com.apple.searchd": true,
+        "com.apple.searchd": false,
         "com.apple.security.CircleJoinRequested": true,
         "com.apple.security.cloudkeychainproxy3": true,
         "com.apple.security.cryptexd": false,
@@ -1630,7 +1649,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.symptomsd-diag": true,
         "com.apple.symptomsd.helper": true,
         "com.apple.synapse.contentlinkingd": false,
-        "com.apple.syncdefaultsd": true,
+        "com.apple.syncdefaultsd": false,
         "com.apple.sysdiagnose": true,
         "com.apple.sysdiagnose.darwinos": true,
         "com.apple.sysdiagnose_helper": true,
@@ -1678,25 +1697,30 @@ final class DefaultPresets: ObservableObject {
         "com.apple.xpc.roleaccountd": false,
     ]
 
+    // Store explicit choices separately so future builtin changes can take effect.
     @Published var customDefaults: [String: Bool] {
-        didSet {
-            UserDefaults.standard.set(customDefaults, forKey: "userConfiguredDefaults")
-        }
+        didSet { UserDefaults.standard.set(customDefaults, forKey: "userConfiguredOverrides") }
     }
 
     init() {
-        if let saved = UserDefaults.standard.dictionary(forKey: "userConfiguredDefaults") as? [String: Bool] {
-            self.customDefaults = saved
+        let defaults = UserDefaults.standard
+        if let saved = defaults.dictionary(forKey: "userConfiguredOverrides") as? [String: Bool] {
+            customDefaults = saved
+        } else if let legacy = defaults.dictionary(forKey: "userConfiguredDefaults") as? [String: Bool] {
+            // The old format copied every builtin value. Retain differing choices.
+            let changed = Set(SafetyManager.recommendedEnabled.keys)
+            customDefaults = legacy.filter { label, value in
+                let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
+                return oldBuiltin != value
+            }
         } else {
-            self.customDefaults = Self.builtinDefaults
+            customDefaults = [:]
         }
+        defaults.set(customDefaults, forKey: "userConfiguredOverrides")
     }
 
     func targetState(for label: String) -> Bool {
-        if let val = customDefaults[label] {
-            return val
-        }
-        return Self.builtinDefaults[label] ?? false
+        customDefaults[label] ?? Self.builtinDefaults[label] ?? false
     }
 
     func setTargetState(for label: String, disable: Bool) {
@@ -1704,6 +1728,6 @@ final class DefaultPresets: ObservableObject {
     }
 
     func resetToBuiltin() {
-        customDefaults = Self.builtinDefaults
+        customDefaults = [:]
     }
 }
