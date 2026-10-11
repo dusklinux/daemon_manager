@@ -24,7 +24,7 @@ jobs:
       - name: Check Presets and Override Failure Handling
         run: |
           python3 -m unittest discover -s tests -v
-          swiftc DaemonApp/MemoryStatistics.swift DaemonApp/StorageStatistics.swift tests/MemoryStatisticsTests.swift -o /tmp/daemon-memory-tests
+          swiftc DaemonApp/MemoryStatistics.swift tests/MemoryStatisticsTests.swift -o /tmp/daemon-memory-tests
           /tmp/daemon-memory-tests
 
       - name: Generate Project & Compile
@@ -66,8 +66,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
+          tag_name: v1.0.5
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.4"
-          body: "Add native wallpaper-host control and storage capacity details. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.5"
+          body: "Add instant system-transition control and on-demand NAND health diagnostics; remove storage capacity from RAM. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

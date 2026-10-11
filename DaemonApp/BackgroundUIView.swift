@@ -25,6 +25,18 @@ struct BackgroundUIView: View {
                         Text("PosterBoard was not found on this device.").foregroundColor(.secondary)
                     }
                 }
+                Section("System animations") {
+                    if let disabled = model.animationsDisabled {
+                        Toggle("Disable system animations", isOn: Binding(
+                            get: { disabled }, set: { model.manageAnimations(disable: $0) }))
+                    }
+                    if model.isChangingAnimations { ProgressView("Reading animation control…") }
+                    if let error = model.animationControlError { Text(error).foregroundColor(.orange) }
+                    Text("Uses the optional NoAnimationsX 1.2 rootless tweak to suppress SpringBoard animation actions. Respring after changing the switch. It does not change animation speed or animations inside other apps. Coverage depends on the system transition; verify app opening/closing and the switcher on your device.")
+                        .font(.caption).foregroundColor(.secondary)
+                    Link("Developer repository (for Sileo)", destination: URL(string: "https://repo.icrazeios.com/")!)
+                }
+                .disabled(model.isChangingAnimations || model.isDiagnosingDisk)
                 Section("Cache and compression") {
                     Text("Speculative pages are reclaimable filesystem cache managed by the kernel. They are not a SysMain service, and clearing them is not a lasting RAM saving.")
                     Text("iOS compresses memory automatically. There is no verified, useful force-compress control here; intentionally creating pressure could evict apps and add CPU work.")
@@ -37,5 +49,6 @@ struct BackgroundUIView: View {
                 ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } }
             }
         }
+        .task { model.manageAnimations() }
     }
 }

@@ -683,6 +683,7 @@ struct ConfigBatchView: View {
 struct ToolsRecoveryView: View {
     @EnvironmentObject var model: AppModel
     @State private var showBackgroundUI = false
+    @State private var showDiskHealth = false
     let onResetDefaults: () -> Void
     let onEmergencyReset: () -> Void
 
@@ -735,7 +736,21 @@ struct ToolsRecoveryView: View {
                     Text("Manage the verified wallpaper host through native launchd overrides. No background killer or periodic polling.")
                         .font(.footnote).foregroundColor(.secondary)
                     Button { showBackgroundUI = true } label: {
-                        Label("Wallpaper process", systemImage: "photo")
+                        Label("Wallpaper & animations", systemImage: "photo")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding()
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(12)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Disk Health").font(.headline)
+                    Text("Read NAND wear and erase-cycle counters from an on-demand sysdiagnose report.")
+                        .font(.footnote).foregroundColor(.secondary)
+                    Button { showDiskHealth = true } label: {
+                        Label("Disk diagnostics", systemImage: "stethoscope")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -799,6 +814,9 @@ struct ToolsRecoveryView: View {
         }
         .sheet(isPresented: $showBackgroundUI) {
             BackgroundUIView().environmentObject(model)
+        }
+        .sheet(isPresented: $showDiskHealth) {
+            DiskHealthView().environmentObject(model)
         }
     }
 }

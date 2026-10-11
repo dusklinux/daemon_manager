@@ -71,6 +71,13 @@ final class AppModel: ObservableObject {
     @Published var showLogConsole: Bool = false
     @Published var liveLog: String = ""
     
+    @Published private(set) var diskHealthReport: DiskHealthReport?
+    @Published private(set) var diskHealthError: String?
+    @Published private(set) var isDiagnosingDisk = false
+    @Published private(set) var animationsDisabled: Bool?
+    @Published private(set) var animationControlError: String?
+    @Published private(set) var isChangingAnimations = false
+
     private var currentPid: pid_t? = nil
     private var disabledServices: Set<DisabledServiceKey>?
     private var importedLabels: [String] = []
@@ -136,7 +143,7 @@ final class AppModel: ObservableObject {
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isProcessing.contains(service.id)
+        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isDiagnosingDisk && !isProcessing.contains(service.id)
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
@@ -207,6 +214,49 @@ if rc == 0:
                 if self.pressureRevision == revision, result.exitCode == 0, let pressure {
                     self.memoryPressure = pressure
                     self.pressureRevision += 1
+                }
+            }
+        }
+    }
+
+    func readDiskHealth(generate: Bool) {
+        guard !isDiagnosingDisk, !isApplyingConfig, isProcessing.isEmpty else { return }
+        isDiagnosingDisk = true
+        diskHealthReport = nil
+        diskHealthError = nil
+        let script = DiskDiagnostics.script + "\nrun(" + (generate ? "True" : "False") + ")\n"
+        let command = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
+        DispatchQueue.global(qos: .utility).async {
+            let result = self.posixRunSync(executable: command.executable, args: command.arguments, trackProcess: false)
+            let lines = result.output.split(separator: "\n")
+            let json = lines.first { $0.hasPrefix("disk_report=") }.map { Data($0.dropFirst(12).utf8) }
+            let report = json.flatMap { try? JSONDecoder().decode(DiskHealthReport.self, from: $0) }
+            let error = lines.first { $0.hasPrefix("disk_error=") }.map { String($0.dropFirst(11)) }
+            DispatchQueue.main.async {
+                self.isDiagnosingDisk = false
+                self.diskHealthReport = result.exitCode == 0 ? report : nil
+                self.diskHealthError = self.diskHealthReport == nil ? (error ?? "Could not read the diagnostic. Check the root password in Tools.") : nil
+                self.refreshState()
+            }
+        }
+    }
+
+    func manageAnimations(disable: Bool? = nil) {
+        guard !isChangingAnimations, !isDiagnosingDisk else { return }
+        isChangingAnimations = true
+        animationControlError = nil
+        let mode = disable.map { $0 ? "True" : "False" } ?? "None"
+        let script = AnimationControl.script + "\nrun(" + mode + ")\n"
+        let command = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
+        DispatchQueue.global(qos: .utility).async {
+            let result = self.posixRunSync(executable: command.executable, args: command.arguments, trackProcess: false)
+            DispatchQueue.main.async {
+                self.isChangingAnimations = false
+                self.animationsDisabled = result.exitCode == 0 ? result.output.contains("animations_disabled=True") : nil
+                if result.exitCode != 0 {
+                    self.animationControlError = result.output.split(separator: "\n").first { $0.hasPrefix("animation_error=") }.map { String($0.dropFirst(16)) } ?? "Could not read the animation control. Check the root password in Tools."
+                } else if disable != nil {
+                    self.statusMessage = "Animation setting saved. Respring to apply it."
                 }
             }
         }
@@ -294,7 +344,7 @@ if rc == 0:
 
     // Apply changed builtin or explicitly customized targets.
     func applyAllDefaults() {
-        guard disabledServices != nil, !isApplyingConfig else { return }
+        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk else { return }
         let presets = DefaultPresets.shared
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         
@@ -316,6 +366,7 @@ if rc == 0:
 
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
+        guard !isDiagnosingDisk else { return }
         let pwd = self.rootPassword
         var seen = Set<DisabledServiceKey>()
         let operations = operations.filter { op in
@@ -381,6 +432,7 @@ if rc == 0:
 
     // Emergency Factory Reset (borrowed from Geranium)
     func emergencyResetLaunchd() {
+        guard !isDiagnosingDisk else { return }
         let pwd = self.rootPassword
         let resetScript = """
         cp /var/db/com.apple.xpc.launchd/disabled.plist /var/db/com.apple.xpc.launchd/disabled.backup 2>/dev/null
@@ -403,6 +455,7 @@ if rc == 0:
 
     // Quick Respring
     func respring() {
+        guard !isDiagnosingDisk else { return }
         let pwd = self.rootPassword
         let cmd = "if command -v sbreload >/dev/null 2>&1; then sbreload; else killall -9 SpringBoard backboardd; fi"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
@@ -413,6 +466,7 @@ if rc == 0:
 
     // Userspace Reboot
     func userspaceReboot() {
+        guard !isDiagnosingDisk else { return }
         let pwd = self.rootPassword
         let cmd = "launchctl reboot userspace"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)

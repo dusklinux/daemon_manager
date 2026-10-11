@@ -4,7 +4,6 @@ struct MemoryDetailsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @State private var storage: StorageSnapshot?
 
     private var pressureColor: Color {
         switch model.memoryPressure {
@@ -71,24 +70,12 @@ struct MemoryDetailsView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                Section("Storage") {
-                    if let disk = storage {
-                        storageRow("Total capacity", disk.totalBytes)
-                        storageRow("Available", disk.availableBytes)
-                        storageRow("Used", max(0, disk.totalBytes - disk.availableBytes))
-                    } else {
-                        Text("Storage capacity unavailable").foregroundColor(.secondary)
-                    }
-                    Text("Lifetime writes, rated write endurance, and wear percentage are unavailable through the verified interface. Capacity is not a disk-health score.")
-                        .font(.caption).foregroundColor(.secondary)
-                }
             }
-            .navigationTitle("Memory & Storage")
+            .navigationTitle("Memory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Refresh") {
-                        storage = StorageSnapshot.read()
                         model.refreshMemoryDetails()
                     }
                         .disabled(model.isReadingMemoryPressure)
@@ -99,23 +86,12 @@ struct MemoryDetailsView: View {
             }
         }
         .task {
-            storage = StorageSnapshot.read()
             model.refreshMemoryDetails()
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
-                storage = StorageSnapshot.read()
                 model.refreshMemoryDetails()
             }
-        }
-    }
-
-    private func storageRow(_ title: String, _ bytes: Int64) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .decimal))
-                .monospacedDigit().foregroundColor(.secondary)
         }
     }
 
