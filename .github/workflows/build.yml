@@ -3,6 +3,10 @@ name: Build TrollStore IPA
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -43,3 +47,12 @@ jobs:
         with:
           name: DaemonApp-iOS16
           path: DaemonApp.ipa
+
+      - name: Create or Update Latest Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Daemon Manager v1.0.0"
+          body: "Automated build of Daemon Manager for iOS 16+ (TrollStore / AppSync)."
+          files: DaemonApp.ipa
+        continue-on-error: true

@@ -46,10 +46,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var environmentWarning: String?
 
     @Published var ramUsageText = "Calculating RAM..."
+    @Published var freeRAMMB: Double = 0.0
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
+    @Published var statusMessage: String?
     
-    @Published var rootPassword = UserDefaults.standard.string(forKey: "rootPassword") ?? "alpine" {
+    // Default to 2345 matching user device
+    @Published var rootPassword = UserDefaults.standard.string(forKey: "rootPassword") ?? "2345" {
         didSet { UserDefaults.standard.set(rootPassword, forKey: "rootPassword") }
     }
     
@@ -66,10 +69,19 @@ final class AppModel: ObservableObject {
     private var importedLabels: [String] = []
     private var timer: Timer?
 
-    private let mobileDomain: String
-    private let rootlessShellPath = "/var/jb/bin/sh"
+    let mobileDomain: String
     
-    // Persistent paths for the script and config
+    // Fallback paths across rootless and rootful setups
+    var rootlessShellPath: String {
+        if FileManager.default.fileExists(atPath: "/var/jb/bin/sh") { return "/var/jb/bin/sh" }
+        return "/bin/sh"
+    }
+    
+    var sudoPath: String {
+        if FileManager.default.fileExists(atPath: "/var/jb/usr/bin/sudo") { return "/var/jb/usr/bin/sudo" }
+        return "/usr/bin/sudo"
+    }
+    
     @Published var daemonManagerPath: String = UserDefaults.standard.string(forKey: "customScriptPath") ?? "/var/jb/basebin/daemonmanager" {
         didSet { UserDefaults.standard.set(daemonManagerPath, forKey: "customScriptPath") }
     }
@@ -115,13 +127,12 @@ final class AppModel: ObservableObject {
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        daemonManagerAvailable && service.domain != nil && disabledServices != nil
+        service.domain != nil && disabledServices != nil
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
-        if !daemonManagerAvailable { return "Missing script dependency at: \(daemonManagerPath)" }
-        if service.domain == nil { return "This imported label could not be resolved." }
-        if disabledServices == nil { return "Current launchd disabled-state has not finished loading." }
+        if service.domain == nil { return "This service domain could not be resolved." }
+        if disabledServices == nil { return "Current launchd state is still loading." }
         return nil
     }
 
@@ -147,7 +158,10 @@ final class AppModel: ObservableObject {
         guard status == KERN_SUCCESS else { return }
         let freeBytes = Double(vmStats.free_count + vmStats.speculative_count) * Double(pageSize)
         let freeMB = freeBytes / 1_048_576.0
-        DispatchQueue.main.async { self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB) }
+        DispatchQueue.main.async {
+            self.freeRAMMB = freeMB
+            self.ramUsageText = String(format: "Free RAM: %.0f MB", freeMB)
+        }
     }
 
     func refreshState(completion: (() -> Void)? = nil) {
@@ -159,7 +173,7 @@ final class AppModel: ObservableObject {
             for domain in domains {
                 let result = self.posixRunSync(executable: self.rootlessShellPath, args: ["-c", "launchctl print-disabled \(domain)"])
                 guard result.exitCode == 0 else {
-                    failures.append("launchctl print-disabled \(domain) failed with exit code \(result.exitCode).")
+                    failures.append("launchctl print-disabled \(domain) exited with code \(result.exitCode).")
                     continue
                 }
                 merged.formUnion(self.parseDisabledServices(from: result.output, domain: domain))
@@ -200,13 +214,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // Direct native launchctl execution - works out of the box without external scripts!
     func toggleDaemon(_ service: LaunchdService, enable: Bool) {
         guard canToggle(service) else { return }
         let pwd = self.rootPassword
+        let domain = service.domain ?? "system"
+        let action = enable ? "enable" : "disable"
+        
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let action = enable ? "enable" : "disable"
-            let elevated = self.buildElevatedCommand(action: action, args: [service.label], pwd: pwd)
+            let cmd: String
+            if self.daemonManagerAvailable {
+                // If custom script is present, use it
+                cmd = "\"\(self.rootlessShellPath)\" \"\(self.daemonManagerPath)\" \(action) \"\(service.label)\""
+            } else {
+                // Standalone native launchctl execution
+                cmd = "launchctl \(action) \(domain)/\(service.label)"
+            }
+            
+            let elevated = self.buildElevatedCommand(rawCommand: cmd, pwd: pwd)
             let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
             guard result.exitCode == 0 else {
                 DispatchQueue.main.async {
@@ -215,7 +241,121 @@ final class AppModel: ObservableObject {
                 }
                 return
             }
-            self.refreshState { self.isProcessing.remove(service.id) }
+            self.refreshState {
+                DispatchQueue.main.async {
+                    self.isProcessing.remove(service.id)
+                }
+            }
+        }
+    }
+
+    // Batch apply curated defaults (498 items from daemon.cfg)
+    func applyAllDefaults() {
+        let presets = DefaultPresets.shared
+        var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
+        
+        for service in allDaemons {
+            let targetDisable = presets.targetState(for: service.label)
+            let currentlyDisabled = isDisabled(service) ?? false
+            if currentlyDisabled != targetDisable {
+                targetsToChange.append((service, targetDisable))
+            }
+        }
+        
+        guard !targetsToChange.isEmpty else {
+            statusMessage = "All daemons already match the curated defaults!"
+            return
+        }
+        
+        executeNativeBatch(operations: targetsToChange, title: "Applying Defaults")
+    }
+
+    // Native batch executor with live progress
+    private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
+        let pwd = self.rootPassword
+        let total = operations.count
+        
+        DispatchQueue.main.async {
+            self.isApplyingConfig = true
+            self.showLogConsole = true
+            self.liveLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
+            self.applyProgressText = "\(title) [0/\(total)]"
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var commands: [String] = []
+            for op in operations {
+                let domain = op.service.domain ?? "system"
+                let act = op.disable ? "disable" : "enable"
+                commands.append("echo \"[\(act)] \(op.service.label)\" && launchctl \(act) \(domain)/\(op.service.label)")
+            }
+            
+            let batchScript = commands.joined(separator: " ; ")
+            let elevated = self.buildElevatedCommand(rawCommand: batchScript, pwd: pwd)
+            
+            var completedCount = 0
+            self.posixRunAsync(
+                executable: elevated.executable,
+                args: elevated.arguments
+            ) { liveText in
+                DispatchQueue.main.async {
+                    self.liveLog += liveText
+                    if liveText.contains("[enable]") || liveText.contains("[disable]") {
+                        completedCount += 1
+                        self.applyProgressText = "\(title) [\(min(completedCount, total))/\(total)]"
+                    }
+                }
+            } onCompletion: { exitCode in
+                DispatchQueue.main.async {
+                    self.liveLog += "\n--- BATCH COMPLETED WITH EXIT CODE \(exitCode) ---\n"
+                    self.applyProgressText = nil
+                    self.isApplyingConfig = false
+                    self.refreshState()
+                    self.statusMessage = "\(title) completed successfully!"
+                }
+            }
+        }
+    }
+
+    // Emergency Factory Reset (borrowed from Geranium)
+    func emergencyResetLaunchd() {
+        let pwd = self.rootPassword
+        let resetScript = """
+        cp /var/db/com.apple.xpc.launchd/disabled.plist /var/db/com.apple.xpc.launchd/disabled.backup 2>/dev/null
+        rm -f /var/db/com.apple.xpc.launchd/disabled.plist /var/db/com.apple.xpc.launchd/disabled.migrated
+        """
+        
+        let elevated = buildElevatedCommand(rawCommand: resetScript, pwd: pwd)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let res = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            DispatchQueue.main.async {
+                if res.exitCode == 0 {
+                    self.statusMessage = "Launchd disabled database reset. Backup saved to disabled.backup. Please userspace reboot or respring."
+                    self.refreshState()
+                } else {
+                    self.errorMessage = "Emergency reset failed: \(res.output)"
+                }
+            }
+        }
+    }
+
+    // Quick Respring
+    func respring() {
+        let pwd = self.rootPassword
+        let cmd = "if command -v sbreload >/dev/null 2>&1; then sbreload; else killall -9 SpringBoard backboardd; fi"
+        let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+        }
+    }
+
+    // Userspace Reboot
+    func userspaceReboot() {
+        let pwd = self.rootPassword
+        let cmd = "launchctl reboot userspace"
+        let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
         }
     }
 
@@ -232,8 +372,6 @@ final class AppModel: ObservableObject {
 
     func importFile(url: URL) {
         let fileName = url.lastPathComponent
-        
-        // Ensure we can read the file (security scoped for picker)
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         
@@ -245,9 +383,8 @@ final class AppModel: ObservableObject {
         if fileName == "daemonmanager" {
             self.daemonManagerPath = url.path
             validateEnvironment()
-            liveLog += "\n[+] Detected and set new script path: \(url.path)"
+            liveLog += "\n[+] Detected custom script: \(url.path)"
         } else {
-            // Assume it is a config file
             self.lastImportedConfigPath = url.path
             let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) ?? ""
             processConfigContent(content)
@@ -263,103 +400,69 @@ final class AppModel: ObservableObject {
             self.resolveImportedConfig()
         }
     }
-    
-    private func executeBatchOperation(action: String, args: [String], progressTextPrefix: String, onFinish: (() -> Void)? = nil) {
-        guard daemonManagerAvailable else { return }
-        let pwd = self.rootPassword
-        
-        DispatchQueue.main.async {
-            self.isApplyingConfig = true
-            self.showLogConsole = true
-            self.liveLog = "--- STARTING DAEMONMANAGER (\(action.uppercased())) ---\n"
-            self.applyProgressText = "\(progressTextPrefix)..."
-        }
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let elevated = self.buildElevatedCommand(action: action, args: args, pwd: pwd)
-            self.posixRunAsync(
-                executable: elevated.executable,
-                args: elevated.arguments
-            ) { liveText in
-                DispatchQueue.main.async {
-                    self.liveLog += liveText
-                    if let range = liveText.range(of: #"\[[0-9]+/[0-9]+\]"#, options: .regularExpression) {
-                        self.applyProgressText = "\(progressTextPrefix) \(String(liveText[range]))"
-                    }
-                }
-            } onCompletion: { exitCode in
-                onFinish?()
-                DispatchQueue.main.async {
-                    self.liveLog += "\n--- PROCESS EXITED WITH CODE \(exitCode) ---\n"
-                    self.applyProgressText = nil
-                    self.isApplyingConfig = false
-                    if exitCode != 0 && exitCode != 15 && exitCode != 143 && exitCode != 9 {
-                        self.errorMessage = "Process failed with code \(exitCode). Check the log for details."
-                    }
-                    self.refreshState()
+    func applyImportedConfig() {
+        guard !targetStates.isEmpty else { return }
+        var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
+        for service in allDaemons {
+            if let targetDisable = targetStates[service.label] {
+                let currentlyDisabled = isDisabled(service) ?? false
+                if currentlyDisabled != targetDisable {
+                    targetsToChange.append((service, targetDisable))
                 }
             }
         }
-    }
-    
-    func applyImportedConfig() {
-        guard let path = lastImportedConfigPath else { return }
-        executeBatchOperation(action: "apply-file", args: [path], progressTextPrefix: "Applying")
+        executeNativeBatch(operations: targetsToChange, title: "Applying Config")
     }
 
-    func resetConfig() {
-        executeBatchOperation(action: "reset", args: [], progressTextPrefix: "Resetting")
-    }
-
-    private func buildElevatedCommand(action: String, args: [String], pwd: String, isRaw: Bool = false) -> (executable: String, arguments: [String]) {
-        let sudoPath = "/var/jb/usr/bin/sudo"
-        let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
-        let safeArgs = args.map { "\"\($0)\"" }.joined(separator: " ")
-        
-        let innerCmd: String
-        if isRaw {
-            innerCmd = action
-        } else {
-            // Force execution via shell to bypass +x issues on some filesystems
-            innerCmd = "\"\(self.rootlessShellPath)\" \"\(self.daemonManagerPath)\" \(action) \(safeArgs)"
+    func exportCurrentConfig() -> String {
+        var lines: [String] = ["# Exported Daemon Configuration", "# Format: <label> <yes: disable | no: keep enabled>"]
+        for service in allDaemons {
+            let isOff = isDisabled(service) ?? false
+            lines.append("\(service.label) \(isOff ? "yes" : "no")")
         }
+        return lines.joined(separator: "\n")
+    }
+
+    private func buildElevatedCommand(rawCommand: String, pwd: String) -> (executable: String, arguments: [String]) {
+        let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
+        let innerCmd = rawCommand.replacingOccurrences(of: "'", with: "'\\''")
         
         if FileManager.default.fileExists(atPath: sudoPath) {
-            let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(self.rootlessShellPath) -c '\(innerCmd)'"
-            return (self.rootlessShellPath, ["-c", shellCmd])
+            let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(rootlessShellPath) -c '\(innerCmd)'"
+            return (rootlessShellPath, ["-c", shellCmd])
         } else {
             let pythonExe = pythonPath
             let pythonScript = """
-            import os, sys, pty, select, signal
+            import os, sys, pty, select
             pw = sys.argv[1]
             cmd = sys.argv[2:]
             pid, fd = pty.fork()
             if pid == 0:
                 os.execv(cmd[0], cmd)
             else:
-                buffer = b""
+                buf = b""
                 while True:
-                    r, w, e = select.select([fd], [], [], 2.0)
+                    r, _, _ = select.select([fd], [], [], 2.0)
                     if not r: break
                     try:
-                        chunk = os.read(fd, 1024)
-                        if not chunk: break
-                        buffer += chunk
-                        if b"assword" in buffer or b"Password:" in buffer:
-                            break
+                        c = os.read(fd, 1024)
+                        if not c: break
+                        buf += c
+                        if b"assword" in buf or b"Password:" in buf: break
                     except OSError:
                         break
                 os.write(fd, (pw + "\\n").encode())
                 try:
                     while True:
-                        data = os.read(fd, 1024)
-                        if not data: break
-                        sys.stdout.buffer.write(data)
+                        d = os.read(fd, 1024)
+                        if not d: break
+                        sys.stdout.buffer.write(d)
                         sys.stdout.flush()
                 except OSError:
                     pass
-                _, status = os.waitpid(pid, 0)
-                sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, 'waitstatus_to_exitcode') else (status >> 8))
+                _, s = os.waitpid(pid, 0)
+                sys.exit((s >> 8) & 0xFF)
             """
             let suExe = "/var/jb/usr/bin/su"
             let suArgs = ["-c", pythonScript, safePwd, suExe, "-", "root", "-c", innerCmd]
@@ -377,7 +480,8 @@ final class AppModel: ObservableObject {
         let available = FileManager.default.fileExists(atPath: daemonManagerPath)
         DispatchQueue.main.async {
             self.daemonManagerAvailable = available
-            self.environmentWarning = available ? nil : "Missing script at: \(self.daemonManagerPath)"
+            // Native mode is active by default; script is optional
+            self.environmentWarning = available ? nil : "Native Mode: Direct launchctl execution (Standalone)"
         }
     }
 
@@ -413,8 +517,9 @@ final class AppModel: ObservableObject {
                 labels.append(label)
                 if fields.count >= 2 {
                     let mode = String(fields[1]).lowercased()
-                    if ["yes", "off", "disable", "disabled"].contains(mode) { targets[label] = false }
-                    else if ["no", "on", "enable", "enabled"].contains(mode) { targets[label] = true }
+                    // yes = disable (target: true), no = keep enabled (target: false)
+                    if ["yes", "off", "disable", "disabled"].contains(mode) { targets[label] = true }
+                    else if ["no", "on", "enable", "enabled"].contains(mode) { targets[label] = false }
                 }
             }
         }
