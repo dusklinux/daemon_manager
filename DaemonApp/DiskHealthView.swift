@@ -65,7 +65,7 @@ struct DiskHealthView: View {
             HStack {
                 Text(title).foregroundColor(.primary)
                 Spacer()
-                Text(report.values[key].map { $0.formatted(.number.grouping(.always)) + " raw" } ?? "Unavailable")
+                Text(report.values[key].map { $0.formatted(.number.locale(Locale(identifier: "en_US"))) + " raw" } ?? "Unavailable")
                     .monospacedDigit().foregroundColor(.secondary)
                 Image(systemName: "info.circle").font(.caption)
             }
