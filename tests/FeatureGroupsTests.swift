@@ -29,6 +29,11 @@ struct FeatureGroupsTests {
             precondition(account.actionLabels(enable: true).contains(label), "Account On omitted a tested prerequisite")
             precondition(!account.actionLabels(enable: false).contains(label), "Account Off disabled a protected prerequisite")
         }
+        let photos = OverrideServices.groups.first { $0.title == "Photos sharing and export" }!
+        precondition(photos.actionLabels(enable: true).contains("com.apple.photos.ImageConversionService"))
+        precondition(!photos.actionLabels(enable: false).contains("com.apple.photos.ImageConversionService"))
+        precondition(photos.actionLabels(enable: true).contains("com.apple.photos.VideoConversionService"))
+        precondition(photos.actionLabels(enable: false).isEmpty, "Group Off must preserve both tested conversion dependencies")
         print("Feature group policy checks passed")
     }
 }

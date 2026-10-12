@@ -73,8 +73,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.13
+          tag_name: v1.0.14
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.13"
-          body: "Record the tested Apple Account/SMS repair set, protect it in feature-group Off actions, and correct authentication dependencies/defaults including absd, cdpd and followupd. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.14"
+          body: "Preserve the tested Photos image/video conversion dependencies and add a Photos sharing/export subpage, alongside the tested Apple Account/SMS repair set. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

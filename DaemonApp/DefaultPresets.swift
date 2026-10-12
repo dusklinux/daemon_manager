@@ -3,6 +3,8 @@ import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
+        "com.apple.photos.VideoConversionService": "Keep enabled for Photos sharing/export that requires video conversion. With this job disabled and image sharing already repaired, the tested Camera video failed to share with an explicit missing VideoConversionService XPC error. Restoring only this job and respringing restored user-confirmed WhatsApp video sharing. Individual disabling remains available when video export is unused.",
+        "com.apple.photos.ImageConversionService": "Keep enabled for Photos sharing/export that requires image conversion. With this job disabled, Photos logged missing-service XPC errors and displayed Unable to Share before opening WhatsApp. Restoring only this job and respringing restored user-confirmed Camera photo and screenshot sharing. Individual disabling remains available when this functionality is unused.",
         "com.apple.cdpd": "Keep enabled for Core Data Protection and Apple Account setup. AuthKit logged failed CoreCDP status requests while this job was off. Restoring cdpd, followupd and identityservicesd together and restarting userspace restored full sign-in on the tested phone. Individual responsibility for the final server error was not isolated.",
         "com.apple.followupd": "Keep enabled for Apple Account follow-up requests. AuthKit logged failed lookups for com.apple.corefollowup.agent while this job was off. It belongs to the tested account-repair set with cdpd and identityservicesd; individual responsibility for the final sign-in error was not isolated.",
         "com.apple.identityservicesd": "Keep enabled for Identity Services and the tested Apple Account setup. It belongs to the account-repair set restored with cdpd/followupd before successful sign-in; individual responsibility for that final error was not isolated. Earlier tests also showed it repeatedly aborting when nehelper was disabled, and restoring nehelper recovered Messages.",
@@ -938,10 +940,10 @@ struct DaemonDescriptions {
         "pfd": "Packet Filter / firewall support daemon (Guideline: no)",
         "com.apple.photoanalysisd": "Photos analysis daemon for faces/objects/scenes (Guideline: yes)",
         "photoanalysisd": "Photos analysis daemon for faces/objects/scenes (Guideline: yes)",
-        "com.apple.photos.ImageConversionService": "Image conversion service used by Photos/system frameworks (Guideline: no)",
-        "photos.ImageConversionService": "Image conversion service used by Photos/system frameworks (Guideline: no)",
-        "com.apple.photos.VideoConversionService": "Video conversion service used by Photos/system frameworks (Guideline: no)",
-        "photos.VideoConversionService": "Video conversion service used by Photos/system frameworks (Guideline: no)",
+        "com.apple.photos.ImageConversionService": "Converts images for Photos sharing/export. Disabling caused Unable to Share; restoring the job and respringing repaired the tested WhatsApp photo path.",
+        "photos.ImageConversionService": "Converts images for Photos sharing/export. Disabling caused Unable to Share; restoring the job and respringing repaired the tested WhatsApp photo path.",
+        "com.apple.photos.VideoConversionService": "Converts videos for Photos sharing/export. Disabling prevented the tested Camera video from sharing; restoring the job and respringing repaired it.",
+        "photos.VideoConversionService": "Converts videos for Photos sharing/export. Disabling prevented the tested Camera video from sharing; restoring the job and respringing repaired it.",
         "com.apple.pipelined": "Image/camera processing pipeline daemon (Guideline: no)",
         "pipelined": "Image/camera processing pipeline daemon (Guideline: no)",
         "com.apple.pluginkit.pkd": "App-extension broker; disabling caused a reproduced SpringBoard widget-discovery CPU loop (Guideline: NO)",
@@ -1617,8 +1619,8 @@ final class DefaultPresets: ObservableObject {
         "com.apple.perfdiagsselfenabled": true,
         "com.apple.pfd": false,
         "com.apple.photoanalysisd": true,
-        "com.apple.photos.ImageConversionService": true,
-        "com.apple.photos.VideoConversionService": true,
+        "com.apple.photos.ImageConversionService": false,
+        "com.apple.photos.VideoConversionService": false,
         "com.apple.pipelined": false,
         "com.apple.pluginkit.pkd": false,
         "com.apple.pluginkit.pkreporter": true,
@@ -1760,7 +1762,7 @@ final class DefaultPresets: ObservableObject {
             let changed: Set<String> = ["com.apple.searchd", "com.apple.biomed", "com.apple.syncdefaultsd",
                                         "com.apple.imagent", "com.apple.identityservicesd", "com.apple.nehelper",
                                         "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
-                                        "com.apple.cdpd", "com.apple.followupd"]
+                                        "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService"]
             customDefaults = legacy.filter { label, value in
                 let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value

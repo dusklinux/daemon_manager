@@ -44,6 +44,7 @@ private struct OverrideGroupView: View {
                     Spacer()
                     Button("On") { model.applyFeatureGroup(group, enable: true) }
                     Button("Off") { model.applyFeatureGroup(group, enable: false) }
+                        .disabled(group.actionLabels(enable: false).isEmpty)
                 }
                 .buttonStyle(.bordered)
                 .disabled(busy)
