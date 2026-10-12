@@ -3,6 +3,13 @@ import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
+        "com.apple.pluginkit.pkd": "Keep enabled for app extensions and widgets. On an iPhone 8 Plus running iOS 16.7.16, starting SpringBoard with pkd disabled caused continuous widget-extension discovery retries at about one CPU core. Enabling/loading pkd and respringing reduced idle SpringBoard CPU to about 1.4%; disabling it before another respring reproduced the loop. Its builtin target is already enabled. Re-enable it and restart userspace to restore the dependency fully.",
+        "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
+        "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
+        "com.apple.syncdefaultsd": "Keep enabled for synchronized key-value preferences. This service provides com.apple.kvsd; multiple apps logged failed key-value-store access while it was off.",
+        "com.apple.nehelper": "Keep enabled for Network Extension clients, including Identity Services. With nehelper disabled, identityservicesd repeatedly aborted while creating its network interface and Messages could not open. Re-enabling it restored conversations. It is not exclusive to Messages.",
+        "com.apple.nehelper-embedded": "Alias of the nehelper configuration file. The installed job label is com.apple.nehelper; keep it enabled for Identity Services and other Network Extension clients.",
+        "com.apple.mobile.lockdown": "Keep enabled for USB pairing, trust, computer backups, and host tools. Paired USB queries failed when it was off and worked after it was restored. USB charging and port-forwarded SSH are separate functions.",
         "com.apple.AdminLite": "system watchdog daemon",
         "AdminLite": "system watchdog daemon",
         "com.apple.BTServer.avrcp": "Bluetooth media control profile support, Prevents pause/play on the headphones if disabled",
@@ -152,16 +159,8 @@ struct SafetyManager {
     // Dependency/functionality warnings observed during the 2026-10-11/12 device tests.
     // These are recommendations, not claims that the services cause bootloops.
     static let recommendedEnabled: [String: String] = [
-        "com.apple.pluginkit.pkd": "Keep enabled for app extensions and widgets. On an iPhone 8 Plus running iOS 16.7.16, starting SpringBoard with pkd disabled caused continuous widget-extension discovery retries at about one CPU core. Enabling/loading pkd and respringing reduced idle SpringBoard CPU to about 1.4%; disabling it before another respring reproduced the loop. Its builtin target is already enabled. Re-enable it and restart userspace to restore the dependency fully.",
-        "com.apple.AccessibilityUIServer": "Keep enabled for accessibility features. Turning it off can make accessibility controls unavailable and logs unavailable-host messages. Basic Home, Notes, Camera and Messages checks passed after reboot on one iOS 16 phone with Back Tap and Speak Screen off; other accessibility features were not tested. Re-enable and restart userspace before using them.",
-        "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
-        "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
-        "com.apple.syncdefaultsd": "Keep enabled for synchronized key-value preferences. This service provides com.apple.kvsd; multiple apps logged failed key-value-store access while it was off.",
         "com.apple.imagent": "Recommended for Messages. Handles messaging accounts and communication; keep enabled when using Messages. You can disable it if you do not use that feature.",
         "com.apple.identityservicesd": "Recommended for iMessage and FaceTime identity services. Keep enabled when using those features, together with nehelper. It repeatedly aborted when nehelper was disabled on the tested phone.",
-        "com.apple.nehelper": "Recommended for Network Extension clients, including Identity Services. With nehelper disabled, identityservicesd repeatedly aborted while creating its network interface and Messages could not open. Re-enabling it restored conversations. It is not exclusive to Messages.",
-        "com.apple.nehelper-embedded": "Alias of the nehelper configuration file. The installed job label is com.apple.nehelper; keep it enabled for Identity Services and other Network Extension clients.",
-        "com.apple.mobile.lockdown": "Keep enabled for USB pairing, trust, computer backups, and host tools. Paired USB queries failed when it was off and worked after it was restored. USB charging and port-forwarded SSH are separate functions."
     ]
 
     static func requiresWarning(_ label: String) -> Bool {
@@ -190,6 +189,14 @@ struct SafetyManager {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
+        "com.tigisoftware.filza.helper": "Privileged helper for Filza file operations.",
+        "com.openssh.sshd": "OpenSSH server providing remote shell and file transfer access.",
+        "com.apple.replaykitangel": "ReplayKit screen recording and broadcast interface. Enable together with replayd for Screen Recording; Camera photos and Camera videos use separate services.",
+        "com.apple.livetranscriptionui": "Hosts the Live Captions transcription interface. Disable when captions are unused; re-enable before using the feature on supported devices.",
+        "com.apple.PassbookUISceneService": "Hosts Wallet and Passbook remote interfaces. Wallet or Apple Pay interfaces can become unavailable when disabled.",
+        "com.apple.sharing.airdropui": "AirDrop user interface and incoming-transfer notification host. The separate Allow AirDrop switch disables sending and receiving; sharingd remains enabled for the normal Share Sheet.",
+        "com.apple.ShortcutsUI": "Hosts interactive Shortcuts interfaces. Enable it for prompts and other Shortcuts UI; it is separate from the core siriactionsd and linkd services.",
+        "com.apple.PaperBoard": "Wallpaper-related UI host exporting com.apple.paperboard.services. Wallpaper editing can become unavailable when disabled; basic Camera, Home and sharing were checked with it off.",
         "com.apple.AccessibilityUIServer": "Hosts system accessibility user interfaces. This optional per-device override is separate from disabling accessibility features in Settings.",
         "com.apple.PosterBoard": "Hosts iOS wallpaper and Lock Screen poster extensions. Native disabling stopped it and most poster extensions on the tested iOS 16 phone. Wallpaper display/customization can stop working. This is an optional advanced choice, not a routine process kill.",
         "com.apple.ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
@@ -936,8 +943,8 @@ struct DaemonDescriptions {
         "photos.VideoConversionService": "Video conversion service used by Photos/system frameworks (Guideline: no)",
         "com.apple.pipelined": "Image/camera processing pipeline daemon (Guideline: no)",
         "pipelined": "Image/camera processing pipeline daemon (Guideline: no)",
-        "com.apple.pluginkit.pkd": "PlugInKit daemon for app extensions/widgets (Guideline: no)",
-        "pluginkit.pkd": "PlugInKit daemon for app extensions/widgets (Guideline: no)",
+        "com.apple.pluginkit.pkd": "App-extension broker; disabling caused a reproduced SpringBoard widget-discovery CPU loop (Guideline: NO)",
+        "pluginkit.pkd": "App-extension broker; disabling caused a reproduced SpringBoard widget-discovery CPU loop (Guideline: NO)",
         "com.apple.pluginkit.pkreporter": "PlugInKit diagnostics reporter (Guideline: yes)",
         "pluginkit.pkreporter": "PlugInKit diagnostics reporter (Guideline: yes)",
         "com.apple.pointerUI.pointeruid": "Pointer UI daemon for mouse/trackpad support (Guideline: if-unused)",
@@ -986,7 +993,7 @@ struct DaemonDescriptions {
         "remoted": "Apple remote services daemon; public role not fully clear (Guideline: no)",
         "com.apple.remotemanagementd": "Remote-management daemon for supervised/managed devices (Guideline: if-unused)",
         "remotemanagementd": "Remote-management daemon for supervised/managed devices (Guideline: if-unused)",
-        "com.apple.replayd": "ReplayKit screen-recording/broadcast daemon (Guideline: if-unused)",
+        "com.apple.replayd": "ReplayKit screen-recording and broadcast daemon. Enable together with ReplayKitAngel before screen recording; this does not disable Camera video capture.",
         "replayd": "ReplayKit screen-recording/broadcast daemon (Guideline: if-unused)",
         "com.apple.retimerd": "Private Apple hardware daemon, unclear public role (Guideline: no)",
         "retimerd": "Private Apple hardware daemon, unclear public role (Guideline: no)",
@@ -1182,9 +1189,36 @@ struct DaemonDescriptions {
         "xpc.roleaccountd": "Private Apple XPC/account-role daemon, unclear public role (Guideline: no)",
     ]
 
+    // Actual labels matched to known descriptions by installed executable/endpoints.
+    static let aliases: [String: String] = [
+        "com.apple.ids.IDSCredentialsAgent": "com.apple.idscredentialsagent",
+        "com.apple.wifiFirmwareLoader": "com.apple.WiFiFirmwareLoader",
+        "com.apple.cloudsettingssyncagent": "com.apple.CloudSettingsSyncAgent",
+        "com.apple.BluetoothUIService": "com.apple.bluetoothuiservice",
+        "com.apple.mDNSResponderHelper.reloaded": "com.apple.mDNSResponderHelper",
+        "com.apple.imcore.imtransferagent": "com.apple.imtransferagent",
+        "com.apple.familynotification": "com.apple.familynotificationd",
+        "com.apple.idsfoundation.IDSRemoteURLConnectionAgent": "com.apple.idsremoteurlconnectionagent",
+        "com.apple.PointerUI.pointeruid": "com.apple.pointerUI.pointeruid",
+        "com.apple.splashboard": "com.apple.splashboardd",
+        "com.apple.spotlight.IndexAgent": "com.apple.Spotlight.IndexAgent",
+        "com.apple.AuthenticationServicesCore.AuthenticationServicesAgent": "com.apple.AuthenticationServicesAgent",
+        "com.apple.nanoprefsyncd.2": "com.apple.nanoprefsyncd",
+        "com.apple.mDNSResponder.reloaded": "com.apple.mDNSResponder",
+        "com.apple.mobile.installation_proxy": "com.apple.mobile_installation_proxy",
+        "com.apple.Maps.mapspushd": "com.apple.maps.pushdaemon",
+        "com.apple.Maps.geocorrectiond": "com.apple.maps.geocorrectiond",
+        "com.apple.nehelper": "com.apple.nehelper-embedded",
+        "com.apple.BarcodeSupport.BarcodeNotificationService": "com.apple.BarcodeNotificationService",
+        "com.apple.bootpd": "bootps",
+        "com.apple.nlcd": "com.apple.NetworkLinkConditioner",
+        "com.apple.midiserver": "com.apple.midiserver-ios",
+    ]
+
     static func get(for label: String) -> String? {
         let stripped = label.hasPrefix("com.apple.") ? String(label.dropFirst(10)) : label
-        guard let description = dict[label] ?? dict["com.apple.\(label)"] ?? dict[stripped] else { return nil }
+        let canonical = aliases[label] ?? label
+        guard let description = dict[canonical] ?? dict["com.apple.\(label)"] ?? dict[stripped] else { return nil }
         let text = description.lowercased()
         guard !["unclear", "private apple", "not well documented", "not clearly documented", "not fully clear", "public role"].contains(where: text.contains) else { return nil }
         return description.components(separatedBy: " (Guideline:").first
@@ -1195,10 +1229,16 @@ struct DaemonDescriptions {
 final class DefaultPresets: ObservableObject {
     static let shared = DefaultPresets()
 
-    // Curated default states: true = disable (save RAM), false = keep active
+    // Saved default overrides: true = disabled; false = allow demand launching.
     static let builtinDefaults: [String: Bool] = [
         "com.apple.PosterBoard": false,
         "com.apple.AccessibilityUIServer": false,
+        "com.apple.PaperBoard": true,
+        "com.apple.ShortcutsUI": false,
+        "com.apple.sharing.airdropui": true,
+        "com.apple.PassbookUISceneService": true,
+        "com.apple.livetranscriptionui": true,
+        "com.apple.replaykitangel": true,
         "bootps": false,
         "com.apple.ABDatabaseDoctor": true,
         "com.apple.AdminLite": false,

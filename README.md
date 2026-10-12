@@ -2,11 +2,11 @@
 
 SwiftUI service/preset manager for jailbroken iOS 16+, built with XcodeGen and installed with TrollStore Lite or AppSync Unified.
 
-Tap a service name or chevron for its known description, launchd plist and executable paths, and related file metadata where verified. Contacts-related services show the address-book database paths, sizes, and modification dates without reading contact records. Uncertain private roles are omitted. The independent switch edits the saved launchd override; restart userspace for full loaded-process changes.
+Known service descriptions are visible directly in Services, Defaults and Overrides. Tap the name or chevron for warnings, launchd plist/executable paths and related file metadata where verified. Contacts-related services show the address-book database paths, sizes, and modification dates without reading contact records. Uncertain private roles are omitted. The independent switch edits the saved launchd override; restart userspace for full loaded-process changes.
 
 The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The header is kernel free memory including speculative pages, with each page counted once. Tap it for a live memory sheet.
 
-`daemon.cfg` matches all 506 builtin targets: **320 off, 186 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect 2026-10-11/12 iPhone 8 Plus tests:
+`daemon.cfg` matches all **512 builtin targets: 325 off, 187 on**. `yes` = disabled override; `no` = enabled override; uppercase `NO` = critical, keep enabled. All entries remain manually configurable. Critical includes measured CPU, repeated crashes and core dependency failures; it does not mean every member causes a bootloop. The classifications reflect 2026-10-11/12 iPhone 8 Plus tests:
 
 - `searchd`: repeated Photos Spotlight retries and sustained CPU during broad live unloading; fresh boot and a short single-service comparison did not reproduce it, so causality remains unproven.
 - `biomed`: SpringBoard/keyboard Biome metadata and lockfile errors with the service off.
@@ -16,11 +16,11 @@ The tab bar has an opaque standard and scroll-edge appearance from initial launc
 - `mobile.lockdown`: paired USB tools failed when disabled and worked after restoration; keep enabled for pairing/computer backups.
 - `pluginkit.pkd`: starting SpringBoard with it disabled reproduced continuous widget-extension discovery retries and about one CPU core of use. Restoring it and respringing returned idle SpringBoard to about 1.4% CPU. Its builtin target was already enabled; this was an additional manual disable.
 
-These recommendations do not claim new bootloop risks. The earlier full-off profile passed user-confirmed basic usage after reboot, but logs were not clean and the >600 MiB physical-free idle target was not established. No broad performance or battery-life gain is claimed.
+Pkd, nehelper (including its filename alias), searchd, biomed, syncdefaultsd and mobile.lockdown are now Critical. Searchd retains its explicitly unproven single-service CPU causality. Imagent and identityservicesd remain optional-feature recommendations. AccessibilityUIServer is optional and has no Recommended On badge. These classifications do not claim new bootloop risks. The earlier full-off profile passed user-confirmed basic usage after reboot, but logs were not clean and the >600 MiB physical-free idle target was not established. No broad performance or battery-life gain is claimed.
 
 Custom target choices are stored separately from builtins. Legacy full-copy preferences migrate values differing from the old builtins as custom choices; inherited values adopt revised defaults. The old format cannot distinguish a deliberate choice equal to an inherited value.
 
-Routine single and batch actions use and verify native launchctl overrides, preserve root:wheel `0644` metadata for the tested persistence workflow, and report failures. They do not rewrite the launchd database directly or hot-unload dependencies. Restart userspace to apply process changes fully.
+General service batches save and verify native launchctl overrides, preserve root:wheel `0644` metadata and report failures; restart userspace for complete process changes. Single switches for the tested Overrides catalog also load/unload the selected feature job and verify its loaded state immediately. No polling worker or blanket dependency unloading is added.
 
 ## Build
 
@@ -50,9 +50,9 @@ Discover the helper path on other installations. `appinst /path/to/DaemonApp.ipa
 
 **Critical** has a dedicated tab containing the installed services from the existing capital-`NO` classification, with disabled entries first. Membership is independent of override state; turning a critical service off never removes it from this category. Each description identifies the particular core functionality or stability risk; this category does not imply every service has a verified bootloop risk. Critical disables retain the existing confirmation, including when changing a default target.
 
-**Recommended On** services have orange guidance and toggle directly without the critical confirmation. Messages dependencies are recommendations, not newly classified bootloop services. Their explanations document feature and dependency consequences, including repeated Identity Services crashes if nehelper is disabled while Identity Services is enabled.
+**Recommended On** services have orange guidance and toggle directly without the critical confirmation. Imagent and identityservicesd remain recommendations for optional Messages features. Nehelper is Critical because its absence reproduced repeated Identity Services crashes; this is not a bootloop claim.
 
-All 506 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
+All 512 targets are compiled into the IPA. Defaults shows installed services plus missing builtin entries, clearly marked "Not found on this device"; applying targets acts only on installed services. Custom choices override the builtin targets. No config import is needed on a fresh installation; optional import/export remains available. Installation itself does not apply defaults or change the phone's saved overrides.
 
 ## Memory and list organization
 
@@ -100,4 +100,20 @@ Enabling and bootstrapping pkd alone left the existing SpringBoard retry loop ru
 
 This establishes the missing dependency as the trigger for the observed startup retry loop on this installation. It does not establish that every iOS version or tweak configuration behaves identically. Thermal pressure was still elevated during the immediate samples; no temperature decrease or battery-life gain is claimed. Unified log relay was unavailable, but the CPU counters and symbolicated client stacks were collected directly with spindump.
 
-The app now marks pkd **Recommended On** with the measured consequence. The builtin/config target remains enabled and the 506-target counts are unchanged. Explicit custom off choices remain editable; installation does not apply defaults or repair a live dependency automatically. Re-enable pkd and restart userspace to apply the process change fully. The repair on this phone loaded pkd and resprung SpringBoard; it did not reset the launchd database.
+Version 1.0.7 marked pkd **Recommended On**; v1.0.8 promotes it to **Critical**. Its builtin/config target remains enabled. Explicit custom off choices remain editable; installation does not apply defaults or repair a live dependency automatically. Re-enable pkd and restart userspace to apply the process change fully. The repair on this phone loaded pkd and resprung SpringBoard; it did not reset the launchd database.
+
+## Optional feature overrides (v1.0.8)
+
+Overrides replaces the Config tab. Tools → Import / Export Config retains import, apply and export. Service descriptions appear without expanding rows; private roles without verified descriptions remain omitted. Installed labels that use the same verified executable/endpoints as known entries resolve through explicit description aliases. Critical enabled targets/exported entries use uppercase `NO`, which the importer already handles as enabled.
+
+The tab exposes PosterBoard, PaperBoard, AccessibilityUIServer, LiveTranscriptionUI, AirDropUI, PassbookUISceneService, ShortcutsUI, ReplayKitAngel/replayd, and the existing chronod/liveactivitiesd controls. InputUI, shared OverlayUI, ClockAngel and MediaRemoteUI remain excluded. AccessibilityUIServer has no recommendation or critical badge; its existing default target stays enabled and it remains freely switchable. The six new host targets are optional-off except ShortcutsUI, which defaults On. The config/IPA now contain 512 targets, 325 Off and 187 On.
+
+ReplayKit records/broadcasts the screen; Camera photos and Camera video recording use separate services. Enable both ReplayKitAngel and replayd for Screen Recording, and turn them off afterward when unused. Pkd remains Critical even with widget updates disabled because it brokers other app extensions too.
+
+AirDropUI alone is not a complete AirDrop disable. The separate Allow AirDrop switch changes the native `allowAirDrop` feature setting and verifies `isAirDropAllowed`, keeping sharingd enabled for the normal Share Sheet. The signed on-demand helper has the feature-specific entitlement required by the observed profiled error; it runs only when reading/changing this switch. The wrapper temporarily enables/loads profiled when needed and restores its original saved override and loaded state on success, helper failure or timeout. No profile is installed and no managed-policy database is edited directly. The native API and entitlement were exercised on iOS 16.7.16; absent APIs and verification failures are reported rather than claimed as success.
+
+Device testing disabled/unloaded AirDropUI, PassbookUISceneService, LiveTranscriptionUI and PaperBoard, then resprung and restarted userspace. Camera photos/videos passed user checks. The first Share Sheet lacked app extensions and Save to Files despite pkd/FileProvider running; a userspace restart restored them while these optional hosts remained off. A 10-second sample with the hosts off and Camera active used 0.348 SpringBoard CPU seconds, with thermal pressure 0. These workload-specific numbers are not a net RAM or battery-life gain. Initially the additional hosts had no running process and zero launches to reclaim.
+
+The WhatsApp “Open Meta AI” Auto Shortcut separately returned NSCocoaErrorDomain 4097 from its application endpoint through linkd. Pkd, linkd, siriactionsd and ShortcutsUI were enabled. A userspace restart and restoring the four new optional UI hosts did not fix that action. The user verified Apple's Set Flashlight action works. The remaining WhatsApp failure has not been traced to a disabled service.
+
+For manual packaging after the Xcode build, compile `helpers/airdrop-policy.m` with the iphoneos SDK, arm64, iOS 16 minimum, ARC and Foundation; place it as `airdrop-policy` inside DaemonApp.app and sign it with `helpers/airdrop-entitlements.plist`. The GitHub workflow performs these steps before packaging/signing the main app. Do not install a build missing this helper and expect the AirDrop policy control to work.

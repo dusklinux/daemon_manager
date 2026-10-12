@@ -103,15 +103,16 @@ struct MainView: View {
                         .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
                         .toolbarBackground(.visible, for: .tabBar)
 
-                    // TAB 3: Config Import & Export
-                    ConfigBatchView(showFilePicker: $showFilePicker)
-                        .tabItem { Label("Config", systemImage: "doc.text") }
+                    // TAB 3: Tested optional feature overrides
+                    OverridesView()
+                        .tabItem { Label("Overrides", systemImage: "switch.2") }
                         .tag(2)
                         .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
                         .toolbarBackground(.visible, for: .tabBar)
 
                     // TAB 4: Tools & Recovery (From Geranium)
                     ToolsRecoveryView(
+                        showFilePicker: $showFilePicker,
                         onResetDefaults: { showResetDefaultsAlert = true },
                         onEmergencyReset: { showEmergencyResetAlert = true }
                     )
@@ -127,14 +128,6 @@ struct MainView: View {
                 .environmentObject(model)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
-        }
-        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
-            switch result {
-            case .success(let url):
-                model.importFile(url: url)
-            case .failure(let error):
-                model.errorMessage = "Import failed: \(error.localizedDescription)"
-            }
         }
         .alert(
             "Service Disable Warning",
@@ -398,6 +391,7 @@ struct LiveServiceRow: View {
                     .disabled(!model.canToggle(service))
                 }
             }
+            ServiceDescriptionView(label: service.label)
             if isExpanded {
                 ServiceDetailsView(service: service)
                     .padding(.leading, 18)
@@ -417,6 +411,18 @@ struct ServiceWarningBadge: View {
                 .foregroundColor(SafetyManager.isCritical(label) ? .red : .orange)
                 .background((SafetyManager.isCritical(label) ? Color.red : Color.orange).opacity(0.12))
                 .clipShape(Capsule())
+        }
+    }
+}
+
+struct ServiceDescriptionView: View {
+    let label: String
+    var body: some View {
+        if let description = DaemonDescriptions.get(for: label) {
+            Text(description)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -568,6 +574,7 @@ struct DefaultsRow: View {
                 .labelsHidden()
                 .tint(.green)
             }
+            ServiceDescriptionView(label: service.label)
             if isExpanded { ServiceDetailsView(service: service) }
         }
         .padding(.vertical, 6)
@@ -676,13 +683,22 @@ struct ConfigBatchView: View {
             }
             .padding()
         }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
+            switch result {
+            case .success(let url):
+                model.importFile(url: url)
+            case .failure(let error):
+                model.errorMessage = "Import failed: \(error.localizedDescription)"
+            }
+        }
     }
 }
 
 // MARK: - Tab 4: Tools & Recovery (From Geranium)
 struct ToolsRecoveryView: View {
     @EnvironmentObject var model: AppModel
-    @State private var showBackgroundUI = false
+    @Binding var showFilePicker: Bool
+    @State private var showConfig = false
     @State private var showDiskHealth = false
     let onResetDefaults: () -> Void
     let onEmergencyReset: () -> Void
@@ -732,11 +748,11 @@ struct ToolsRecoveryView: View {
                 .cornerRadius(12)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Background UI").font(.headline)
-                    Text("Manage the verified wallpaper host through native launchd overrides. No background killer or periodic polling.")
+                    Text("Configuration").font(.headline)
+                    Text("Import, apply, or export daemon configurations.")
                         .font(.footnote).foregroundColor(.secondary)
-                    Button { showBackgroundUI = true } label: {
-                        Label("Background UI", systemImage: "photo")
+                    Button { showConfig = true } label: {
+                        Label("Import / Export Config", systemImage: "doc.text")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -812,8 +828,12 @@ struct ToolsRecoveryView: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showBackgroundUI) {
-            BackgroundUIView().environmentObject(model)
+        .sheet(isPresented: $showConfig) {
+            NavigationStack {
+                ConfigBatchView(showFilePicker: $showFilePicker).environmentObject(model)
+                    .navigationTitle("Configuration")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showConfig = false } } }
+            }
         }
         .sheet(isPresented: $showDiskHealth) {
             DiskHealthView().environmentObject(model)

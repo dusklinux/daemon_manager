@@ -45,9 +45,6 @@ struct ServiceDetailsView: View {
                     .background((SafetyManager.isCritical(service.label) ? Color.red : Color.orange).opacity(0.10))
                     .cornerRadius(8)
             }
-            if let description = DaemonDescriptions.get(for: service.label) {
-                Text(description).font(.subheadline)
-            }
             if let path = service.plistPath { detail("Launchd configuration", path) }
             if let executable = service.executablePath { detail("Executable", executable) }
             detail("Override domain", service.domain ?? "Unresolved")

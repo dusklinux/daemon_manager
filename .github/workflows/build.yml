@@ -54,6 +54,9 @@ jobs:
           with open(path, "wb") as destination:
               plistlib.dump(info, destination)
           PYCODE
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=16.0 -fobjc-arc \
+            -framework Foundation helpers/airdrop-policy.m -o Payload/DaemonApp.app/airdrop-policy
+          ldid -S"helpers/airdrop-entitlements.plist" Payload/DaemonApp.app/airdrop-policy
           ldid -S"DaemonApp/entitlements.plist" Payload/DaemonApp.app/DaemonApp
           zip -qry DaemonApp.ipa Payload
 
@@ -66,8 +69,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.7
+          tag_name: v1.0.8
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.7"
-          body: "Warn about the reproduced SpringBoard widget-discovery CPU loop when pkd is disabled. Keep the existing enabled default and document the measured device repair. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.8"
+          body: "Add an Overrides tab with tested feature hosts and a reversible AirDrop policy switch. Move configuration tools under Tools, show descriptions inline, and classify measured dependency failures as Critical. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

@@ -13,17 +13,22 @@ class PresetTests(unittest.TestCase):
         self.assertEqual(len(pairs), len(dict(pairs)), 'Duplicate builtin labels')
         builtin = {label: value == 'true' for label, value in pairs}
         config = {}
+        raw_actions = {}
         for line in (ROOT / 'daemon.cfg').read_text().splitlines():
             if not line.strip() or line.lstrip().startswith('#'):
                 continue
             label, action = line.split()
-            self.assertIn(action, ('yes', 'no'))
+            self.assertIn(action, ('yes', 'no', 'NO'))
             self.assertNotIn(label, config)
             config[label] = action == 'yes'
+            raw_actions[label] = action
         self.assertEqual(config, builtin)
         critical = source.split('static let criticalServices: [String: String] = [', 1)[1].split('\n    ]', 1)[0]
         labels = re.findall(r'"([^\"]+)":', critical)
         self.assertFalse([label for label in labels if builtin.get(label) is True])
+        for label in labels:
+            if label in builtin:
+                self.assertEqual(raw_actions[label], 'NO')
         for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
                       'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
             self.assertIs(builtin['com.apple.' + label], False)
@@ -36,9 +41,12 @@ class PresetTests(unittest.TestCase):
         recommended = labels('recommendedEnabled', 'String')
         critical = labels('criticalServices', 'String')
         self.assertFalse(recommended & critical)
-        for label in ('imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
+        for label in ('imagent', 'identityservicesd'):
             self.assertIn('com.apple.' + label, recommended)
             self.assertNotIn('com.apple.' + label, critical)
+        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown'):
+            self.assertIn('com.apple.' + label, critical)
+        self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 
     def test_wallpaper_job_is_available_without_default_disabling(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()

@@ -74,6 +74,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var diskHealthReport: DiskHealthReport?
     @Published private(set) var diskHealthError: String?
     @Published private(set) var isDiagnosingDisk = false
+    @Published private(set) var airDropAllowed: Bool?
+    @Published private(set) var airDropError: String?
+    @Published private(set) var isChangingAirDrop = false
 
     private var currentPid: pid_t? = nil
     private var disabledServices: Set<DisabledServiceKey>?
@@ -140,7 +143,7 @@ final class AppModel: ObservableObject {
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isDiagnosingDisk && !isProcessing.contains(service.id)
+        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isDiagnosingDisk && !isChangingAirDrop && !isProcessing.contains(service.id)
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
@@ -217,7 +220,7 @@ if rc == 0:
     }
 
     func readDiskHealth(generate: Bool) {
-        guard !isDiagnosingDisk, !isApplyingConfig, isProcessing.isEmpty else { return }
+        guard !isDiagnosingDisk, !isApplyingConfig, !isChangingAirDrop, isProcessing.isEmpty else { return }
         isDiagnosingDisk = true
         diskHealthReport = nil
         diskHealthError = nil
@@ -277,8 +280,8 @@ if rc == 0:
                 guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
                 for fileURL in fileURLs where fileURL.pathExtension == "plist" {
                     guard let service = self.loadService(from: fileURL, kind: location.kind, domain: location.domain) else { continue }
-                    // Expose only the two tested UI hosts; other angels include input and core UI.
-                    if location.kind == .angel && !["com.apple.PosterBoard", "com.apple.AccessibilityUIServer"].contains(service.label) { continue }
+                    // Input and shared system overlays remain outside the tested feature hosts.
+                    if location.kind == .angel && !OverrideServices.labels.contains(service.label) { continue }
                     servicesByID[service.id] = service
                 }
             }
@@ -299,7 +302,7 @@ if rc == 0:
         
         DispatchQueue.main.async { self.isProcessing.insert(service.id) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let cmd = self.nativeOverrideCommand(operations: [(service, !enable)])
+            let cmd = self.nativeOverrideCommand(operations: [(service, !enable)], live: OverrideServices.labels.contains(service.label))
             let elevated = self.buildElevatedCommand(rawCommand: cmd, pwd: pwd)
             let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
             guard result.exitCode == 0 else {
@@ -312,7 +315,9 @@ if rc == 0:
             self.refreshState {
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
-                    self.statusMessage = "Override saved. Restart userspace to apply the process change fully."
+                    self.statusMessage = OverrideServices.labels.contains(service.label)
+                        ? "Feature override and loaded job state verified."
+                        : "Override saved. Restart userspace to apply the process change fully."
                 }
             }
         }
@@ -320,7 +325,7 @@ if rc == 0:
 
     // Apply changed builtin or explicitly customized targets.
     func applyAllDefaults() {
-        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk else { return }
+        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop else { return }
         let presets = DefaultPresets.shared
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         
@@ -342,7 +347,7 @@ if rc == 0:
 
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
-        guard !isDiagnosingDisk else { return }
+        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
         let pwd = self.rootPassword
         var seen = Set<DisabledServiceKey>()
         let operations = operations.filter { op in
@@ -408,7 +413,7 @@ if rc == 0:
 
     // Emergency Factory Reset (borrowed from Geranium)
     func emergencyResetLaunchd() {
-        guard !isDiagnosingDisk else { return }
+        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
         let pwd = self.rootPassword
         let resetScript = """
         cp /var/db/com.apple.xpc.launchd/disabled.plist /var/db/com.apple.xpc.launchd/disabled.backup 2>/dev/null
@@ -431,7 +436,7 @@ if rc == 0:
 
     // Quick Respring
     func respring() {
-        guard !isDiagnosingDisk else { return }
+        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
         let pwd = self.rootPassword
         let cmd = "if command -v sbreload >/dev/null 2>&1; then sbreload; else killall -9 SpringBoard backboardd; fi"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
@@ -442,7 +447,7 @@ if rc == 0:
 
     // Userspace Reboot
     func userspaceReboot() {
-        guard !isDiagnosingDisk else { return }
+        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
         let pwd = self.rootPassword
         let cmd = "launchctl reboot userspace"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
@@ -494,7 +499,7 @@ if rc == 0:
     }
 
     func applyImportedConfig() {
-        guard !targetStates.isEmpty, disabledServices != nil, !isApplyingConfig else { return }
+        guard !targetStates.isEmpty, disabledServices != nil, !isApplyingConfig, !isChangingAirDrop else { return }
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         for service in allDaemons {
             if let targetDisable = targetStates[service.label] {
@@ -511,20 +516,55 @@ if rc == 0:
         var lines: [String] = ["# Exported Daemon Configuration", "# Format: <label> <yes: disable | no: keep enabled>"]
         for service in allDaemons {
             let isOff = isDisabled(service) ?? false
-            lines.append("\(service.label) \(isOff ? "yes" : "no")")
+            lines.append("\(service.label) \(isOff ? "yes" : (SafetyManager.isCritical(service.label) ? "NO" : "no"))")
         }
         return lines.joined(separator: "\n")
     }
 
-    private func nativeOverrideCommand(operations: [(service: LaunchdService, disable: Bool)]) -> String {
+    private func nativeOverrideCommand(operations: [(service: LaunchdService, disable: Bool)], live: Bool = false) -> String {
         let items = operations.compactMap { op -> [String]? in
             guard let domain = op.service.domain else { return nil }
-            return [op.service.label, op.disable ? "disable" : "enable", domain]
+            let item = [op.service.label, op.disable ? "disable" : "enable", domain]
+            return live ? item + [op.service.plistPath ?? ""] : item
         }
         let data = try! JSONSerialization.data(withJSONObject: items)
         let payload = data.base64EncodedString()
-        let script = NativeOverrides.script + "\nsys.exit(apply(json.loads(base64.b64decode('\(payload)'))))\n"
+        let function = live ? "apply_live" : "apply"
+        let script = NativeOverrides.script + "\nsys.exit(\(function)(json.loads(base64.b64decode('\(payload)'))))\n"
         return "\(Self.shellQuote(pythonPath)) -c \(Self.shellQuote(script))"
+    }
+
+    func refreshAirDrop() { runAirDropPolicy(action: "read") }
+    func setAirDropAllowed(_ allowed: Bool) { runAirDropPolicy(action: allowed ? "on" : "off") }
+
+    private func runAirDropPolicy(action: String) {
+        guard !isChangingAirDrop, !isApplyingConfig, !isDiagnosingDisk, isProcessing.isEmpty else { return }
+        guard let helper = Bundle.main.path(forResource: "airdrop-policy", ofType: nil) else {
+            airDropError = "AirDrop policy helper is missing from this build."
+            return
+        }
+        isChangingAirDrop = true
+        airDropError = nil
+        let data = try! JSONSerialization.data(withJSONObject: [helper, action])
+        let script = NativeOverrides.script + "\n" + AirDropControl.script +
+            "\nsys.exit(air_drop(*json.loads(base64.b64decode('\(data.base64EncodedString())'))))\n"
+        let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
+        DispatchQueue.global(qos: .utility).async {
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let line = result.output.split(separator: "\n").first { $0.hasPrefix("airdrop_allowed=") }
+            let value = line.flatMap { Int($0.dropFirst("airdrop_allowed=".count)) }
+            DispatchQueue.main.async {
+                self.isChangingAirDrop = false
+                if result.exitCode == 0, let value, [0, 1].contains(value) {
+                    self.airDropAllowed = value == 1
+                    if action != "read" { self.statusMessage = value == 1 ? "AirDrop allowed. Enable its interface host to use it." : "AirDrop sending and receiving disabled." }
+                } else {
+                    self.airDropAllowed = nil
+                    self.airDropError = result.output.isEmpty ? "Could not verify AirDrop policy." : result.output
+                }
+                self.refreshState()
+            }
+        }
     }
 
     private static func shellQuote(_ value: String) -> String {
