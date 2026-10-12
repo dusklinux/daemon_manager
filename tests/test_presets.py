@@ -49,7 +49,7 @@ class PresetTests(unittest.TestCase):
         recommended = labels('recommendedEnabled', 'String')
         critical = labels('criticalServices', 'String')
         self.assertFalse(recommended & critical)
-        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown', 'absd', 'imagent', 'identityservicesd', 'cdpd', 'followupd', 'photos.ImageConversionService', 'photos.VideoConversionService'):
+        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown', 'absd', 'imagent', 'identityservicesd', 'cdpd', 'followupd', 'photos.ImageConversionService', 'photos.VideoConversionService', 'passd', 'protectedcloudstorage.protectedcloudkeysyncing', 'SecureBackupDaemon'):
             self.assertIn('com.apple.' + label, critical)
         self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 

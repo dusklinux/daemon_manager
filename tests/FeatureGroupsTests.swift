@@ -34,6 +34,18 @@ struct FeatureGroupsTests {
         precondition(!photos.actionLabels(enable: false).contains("com.apple.photos.ImageConversionService"))
         precondition(photos.actionLabels(enable: true).contains("com.apple.photos.VideoConversionService"))
         precondition(photos.actionLabels(enable: false).isEmpty, "Group Off must preserve both tested conversion dependencies")
+        let wallet = OverrideServices.groups.first { $0.title == "Wallet" }!
+        precondition(wallet.actionLabels(enable: false) == ["com.apple.PassbookUISceneService"])
+        let store = OverrideServices.groups.first { $0.title == "App Store and media purchases" }!
+        precondition(store.actionLabels(enable: true).contains("com.apple.passd"))
+        precondition(!store.actionLabels(enable: false).contains("com.apple.passd"))
+        for title in ["Apple Account and settings sync", "iCloud Drive", "iCloud Photos"] {
+            let cloud = OverrideServices.groups.first { $0.title == title }!
+            precondition(cloud.actionLabels(enable: true).contains("com.apple.protectedcloudstorage.protectedcloudkeysyncing"))
+            precondition(!cloud.actionLabels(enable: false).contains("com.apple.protectedcloudstorage.protectedcloudkeysyncing"))
+            precondition(cloud.actionLabels(enable: true).contains("com.apple.SecureBackupDaemon"))
+            precondition(!cloud.actionLabels(enable: false).contains("com.apple.SecureBackupDaemon"))
+        }
         print("Feature group policy checks passed")
     }
 }

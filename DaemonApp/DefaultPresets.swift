@@ -3,6 +3,9 @@ import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
+        "com.apple.SecureBackupDaemon": "Keep enabled for protected iCloud key recovery/escrow. After restoring the cloud-key syncing job, its key synchronization still failed at FetchMetaData with an explicit missing com.apple.SecureBackupDaemon XPC endpoint. Restoring this job and retrying changed protected key synchronization to success in the logs, and the user completed Settings verification with its notice clearing. Full file/photo sync must still be verified separately. Individual disabling remains available when this functionality is unused.",
+        "com.apple.protectedcloudstorage.protectedcloudkeysyncing": "Keep enabled for protected iCloud encryption-key synchronization. With this job disabled, the tested CloudDocs/CloudKit profile failed user-key synchronization and encrypted zone preparation with an explicit missing-service XPC error. This is a logged cloud dependency failure, not a bootloop claim. Individual disabling remains available when protected cloud functionality is unused.",
+        "com.apple.passd": "Keep enabled for Wallet/PassKit and App Store download confirmation. With passd disabled, a free App Store app failed to show its confirmation sheet; logs named the missing com.apple.passd.in-app-payment endpoint. Restoring only passd with the previously restored amsengagementd still enabled, then respringing, restored confirmation, download, installation and launch. The separate Wallet interface override remained disabled. Individual manual disabling remains available.",
         "com.apple.photos.VideoConversionService": "Keep enabled for Photos sharing/export that requires video conversion. With this job disabled and image sharing already repaired, the tested Camera video failed to share with an explicit missing VideoConversionService XPC error. Restoring only this job and respringing restored user-confirmed WhatsApp video sharing. Individual disabling remains available when video export is unused.",
         "com.apple.photos.ImageConversionService": "Keep enabled for Photos sharing/export that requires image conversion. With this job disabled, Photos logged missing-service XPC errors and displayed Unable to Share before opening WhatsApp. Restoring only this job and respringing restored user-confirmed Camera photo and screenshot sharing. Individual disabling remains available when this functionality is unused.",
         "com.apple.cdpd": "Keep enabled for Core Data Protection and Apple Account setup. AuthKit logged failed CoreCDP status requests while this job was off. Restoring cdpd, followupd and identityservicesd together and restarting userspace restored full sign-in on the tested phone. Individual responsibility for the final server error was not isolated.",
@@ -318,8 +321,8 @@ struct DaemonDescriptions {
         "SafariBookmarksSyncAgent": "Safari bookmarks sync agent (Guideline: if-unused)",
         "com.apple.ScreenTimeAgent": "Screen Time tracking agent (Guideline: if-unused)",
         "ScreenTimeAgent": "Screen Time tracking agent (Guideline: if-unused)",
-        "com.apple.SecureBackupDaemon": "Secure backup support daemon (Guideline: no)",
-        "SecureBackupDaemon": "Secure backup support daemon (Guideline: no)",
+        "com.apple.SecureBackupDaemon": "CloudServices secure-backup/key-recovery broker. Protected cloud-key synchronization failed its metadata step when this endpoint was disabled.",
+        "SecureBackupDaemon": "CloudServices secure-backup/key-recovery broker. Protected cloud-key synchronization failed its metadata step when this endpoint was disabled.",
         "com.apple.SensorKitALSHelper": "SensorKit ambient-light helper (Guideline: yes)",
         "SensorKitALSHelper": "SensorKit ambient-light helper (Guideline: yes)",
         "com.apple.SepUpdateTimer": "Secure Enclave update scheduling task (Guideline: no)",
@@ -378,8 +381,8 @@ struct DaemonDescriptions {
         "akd": "apple id account login (Guideline: NO)",
         "com.apple.amsaccountsd": "Apple Media Services account handling (Guideline: no)",
         "amsaccountsd": "Apple Media Services account handling (Guideline: no)",
-        "com.apple.amsengagementd": "Apple Media Services engagement telemetry (Guideline: yes)",
-        "amsengagementd": "Apple Media Services engagement telemetry (Guideline: yes)",
+        "com.apple.amsengagementd": "Apple Media Services UI engagement, server-data cache and universal-link endpoints. A free App Store download passed with this job off; other account/content prompts were not exhaustively tested.",
+        "amsengagementd": "Apple Media Services UI engagement, server-data cache and universal-link endpoints. A free App Store download passed with this job off; other account/content prompts were not exhaustively tested.",
         "com.apple.analyticsd": "System analytics and diagnostics collection (Guideline: yes)",
         "analyticsd": "System analytics and diagnostics collection (Guideline: yes)",
         "com.apple.and": "Private Apple daemon, unclear public role (Guideline: no)",
@@ -924,8 +927,8 @@ struct DaemonDescriptions {
         "parsec-fbf": "Feedback/analytics service for Siri Search/Spotlight (Guideline: yes)",
         "com.apple.parsecd": "Siri Search / Spotlight web-query service (Guideline: if-unused)",
         "parsecd": "Siri Search / Spotlight web-query service (Guideline: if-unused)",
-        "com.apple.passd": "Apple Wallet, passes, and transit card update daemon (Guideline: if-unused)",
-        "passd": "Apple Wallet, passes, and transit card update daemon (Guideline: if-unused)",
+        "com.apple.passd": "Wallet/PassKit backend also used for App Store download confirmation. Restoring it and respringing repaired a free-app download while the Wallet interface override stayed off.",
+        "passd": "Wallet/PassKit backend also used for App Store download confirmation. Restoring it and respringing repaired a free-app download while the Wallet interface override stayed off.",
         "com.apple.pasteboard.pasted": "System pasteboard/clipboard daemon (Guideline: no)",
         "pasteboard.pasted": "System pasteboard/clipboard daemon (Guideline: no)",
         "com.apple.pcapd": "Packet-capture daemon for diagnostics (Guideline: yes)",
@@ -970,8 +973,8 @@ struct DaemonDescriptions {
         "proactiveeventtrackerd": "Tracks events for proactive Siri suggestions (Guideline: yes)",
         "com.apple.progressd": "System progress-reporting daemon (Guideline: no)",
         "progressd": "System progress-reporting daemon (Guideline: no)",
-        "com.apple.protectedcloudstorage.protectedcloudkeysyncing": "Protected cloud key-syncing service (Guideline: no)",
-        "protectedcloudstorage.protectedcloudkeysyncing": "Protected cloud key-syncing service (Guideline: no)",
+        "com.apple.protectedcloudstorage.protectedcloudkeysyncing": "Synchronizes protected iCloud encryption keys. Disabling caused CloudDocs user-key/zone preparation failures with a missing-service XPC error on the tested phone.",
+        "protectedcloudstorage.protectedcloudkeysyncing": "Synchronizes protected iCloud encryption keys. Disabling caused CloudDocs user-key/zone preparation failures with a missing-service XPC error on the tested phone.",
         "com.apple.proximitycontrold": "Proximity-based handoff/device-interaction service (Guideline: if-unused)",
         "proximitycontrold": "Proximity-based handoff/device-interaction service (Guideline: if-unused)",
         "com.apple.ptpcamerad": "PTP camera access daemon for importing photos (Guideline: if-unused)",
@@ -1303,7 +1306,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.Safari.passwordbreachd": true,
         "com.apple.SafariBookmarksSyncAgent": true,
         "com.apple.ScreenTimeAgent": true,
-        "com.apple.SecureBackupDaemon": true,
+        "com.apple.SecureBackupDaemon": false,
         "com.apple.SensorKitALSHelper": true,
         "com.apple.SepUpdateTimer": false,
         "com.apple.SpringBoard": false,
@@ -1611,7 +1614,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.ospredictiond": true,
         "com.apple.parsec-fbf": true,
         "com.apple.parsecd": true,
-        "com.apple.passd": true,
+        "com.apple.passd": false,
         "com.apple.pasteboard.pasted": false,
         "com.apple.pcapd": true,
         "com.apple.peakpowermanagerd": false,
@@ -1762,7 +1765,7 @@ final class DefaultPresets: ObservableObject {
             let changed: Set<String> = ["com.apple.searchd", "com.apple.biomed", "com.apple.syncdefaultsd",
                                         "com.apple.imagent", "com.apple.identityservicesd", "com.apple.nehelper",
                                         "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
-                                        "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService"]
+                                        "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon"]
             customDefaults = legacy.filter { label, value in
                 let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value
