@@ -205,7 +205,7 @@ struct DaemonDescriptions {
         "com.apple.ShortcutsUI": "Hosts interactive Shortcuts interfaces. Enable it for prompts and other Shortcuts UI; it is separate from the core siriactionsd and linkd services.",
         "com.apple.PaperBoard": "Wallpaper-related UI host exporting com.apple.paperboard.services. Wallpaper editing can become unavailable when disabled; basic Camera, Home and sharing were checked with it off.",
         "com.apple.AccessibilityUIServer": "Hosts system accessibility user interfaces. This optional per-device override is separate from disabling accessibility features in Settings.",
-        "com.apple.PosterBoard": "Hosts iOS wallpaper and Lock Screen poster extensions. Native disabling stopped it and most poster extensions on the tested iOS 16 phone. Wallpaper display/customization can stop working. This is an optional advanced choice, not a routine process kill.",
+        "com.apple.PosterBoard": "Hosts wallpaper and Lock Screen poster extensions. In the tested iOS 16 profile, Lock Screen/Notification Center media controls also required PosterBoard together with liveactivitiesd. With liveactivitiesd alone, the panel flashed/turned grey and MediaRemoteUI repeatedly crashed with CALayerInvalidGeometry; enabling PosterBoard and restarting userspace restored clear controls with PaperBoard off. Shared by Wallpaper and Lock Screen media groups. Optional, default Off; restart userspace after changes.",
         "com.apple.ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "com.apple.AdminLite": "system watchdog daemon (Guideline: NO)",
@@ -750,8 +750,8 @@ struct DaemonDescriptions {
         "languageassetd": "Downloads language assets such as dictionaries/voices (Guideline: if-unused)",
         "com.apple.linkd": "Linking service for intents/deep links/app routing (Guideline: no)",
         "linkd": "Linking service for intents/deep links/app routing (Guideline: no)",
-        "com.apple.liveactivitiesd": "Live Activities support (Guideline: if-unused)",
-        "liveactivitiesd": "Live Activities support (Guideline: if-unused)",
+        "com.apple.liveactivitiesd": "Live Activities/session service, also required for the tested Lock Screen and Notification Center playback panel. On restored the panel; Off plus respring removed it again. PosterBoard was additionally needed for clear, stable rendering after a userspace restart. Control Center playback worked with these jobs off. Optional, default Off; use the Lock Screen media controls group for both jobs.",
+        "liveactivitiesd": "Live Activities/session service and a tested Lock Screen playback dependency. Enable it together with PosterBoard and restart userspace for clear media controls; Control Center playback worked with both off. Optional, default Off.",
         "com.apple.localizationswitcherd": "Localization/language-switch helper (Guideline: if-unused)",
         "localizationswitcherd": "Localization/language-switch helper (Guideline: if-unused)",
         "com.apple.locationd": "Core Location daemon (Guideline: no)",
@@ -1238,7 +1238,7 @@ final class DefaultPresets: ObservableObject {
 
     // Saved default overrides: true = disabled; false = allow demand launching.
     static let builtinDefaults: [String: Bool] = [
-        "com.apple.PosterBoard": false,
+        "com.apple.PosterBoard": true,
         "com.apple.AccessibilityUIServer": false,
         "com.apple.PaperBoard": true,
         "com.apple.ShortcutsUI": false,
@@ -1768,7 +1768,8 @@ final class DefaultPresets: ObservableObject {
                                         "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
                                         "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon", "com.apple.contextstored"]
             customDefaults = legacy.filter { label, value in
-                let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
+                // PosterBoard previously inherited On; its revised default is Off.
+                let oldBuiltin = label == "com.apple.PosterBoard" ? false : changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value
             }
         } else {

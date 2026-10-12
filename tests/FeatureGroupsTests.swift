@@ -18,6 +18,11 @@ struct FeatureGroupsTests {
             precondition(Set(group.allLabels).count == group.allLabels.count)
         }
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!
+        let media = OverrideServices.groups.first { $0.title == "Lock Screen media controls" }!
+        precondition(Set(media.actionLabels(enable: true)) == ["com.apple.PosterBoard", "com.apple.liveactivitiesd"])
+        precondition(Set(media.actionLabels(enable: false)) == Set(media.actionLabels(enable: true)), "Optional media group must support complete Off")
+        let widgets = OverrideServices.groups.first { $0.title == "Widget updates" }!
+        precondition(!widgets.allLabels.contains("com.apple.liveactivitiesd"), "Widget updates must not disable Lock Screen playback")
         precondition(Set(recording.actionLabels(enable: true)) == ["com.apple.replaykitangel", "com.apple.replayd"])
         precondition(OverrideServices.groups.filter(\.controlsAirDrop).count == 1)
         precondition(OverrideServices.groups.first { $0.controlsAirDrop }!.actionLabels(enable: false) == ["com.apple.sharing.airdropui"])

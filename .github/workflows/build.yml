@@ -73,8 +73,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.16
+          tag_name: v1.0.17
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.16"
-          body: "Preserve the reproduced contextstored scheduling dependency, complete the Photos sync prerequisites and record verified Drive/Photos transfers; retain direct menu group controls and Store/account/export repairs. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.17"
+          body: "Group the tested PosterBoard/liveactivitiesd Lock Screen media dependencies with complete On/Off controls and default both Off; keep widget updates separate and document the userspace restart requirement. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

@@ -53,7 +53,8 @@ class PresetTests(unittest.TestCase):
             self.assertIn('com.apple.' + label, critical)
         self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 
-    def test_wallpaper_job_is_available_without_default_disabling(self):
+    def test_optional_media_and_wallpaper_hosts_default_off(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
         builtin = source.split('static let builtinDefaults: [String: Bool] = [', 1)[1].split('\n    ]', 1)[0]
-        self.assertIn('"com.apple.PosterBoard": false', builtin)
+        for label in ('PosterBoard', 'PaperBoard', 'liveactivitiesd'):
+            self.assertIn(f'"com.apple.{label}": true', builtin)
