@@ -43,14 +43,13 @@ class PresetTests(unittest.TestCase):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
         def labels(name, kind):
             block = source.split(f'static let {name}: [String: {kind}] = [', 1)[1].split('\n    ]', 1)[0]
+            if block.startswith(':]'):
+                return set()
             return set(re.findall(r'"([^\"]+)":', block))
         recommended = labels('recommendedEnabled', 'String')
         critical = labels('criticalServices', 'String')
         self.assertFalse(recommended & critical)
-        for label in ('imagent', 'identityservicesd'):
-            self.assertIn('com.apple.' + label, recommended)
-            self.assertNotIn('com.apple.' + label, critical)
-        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown'):
+        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown', 'absd', 'imagent', 'identityservicesd', 'cdpd', 'followupd'):
             self.assertIn('com.apple.' + label, critical)
         self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 

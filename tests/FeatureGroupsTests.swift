@@ -21,6 +21,14 @@ struct FeatureGroupsTests {
         precondition(Set(recording.actionLabels(enable: true)) == ["com.apple.replaykitangel", "com.apple.replayd"])
         precondition(OverrideServices.groups.filter(\.controlsAirDrop).count == 1)
         precondition(OverrideServices.groups.first { $0.controlsAirDrop }!.actionLabels(enable: false) == ["com.apple.sharing.airdropui"])
+        let messages = OverrideServices.groups.first { $0.title == "Messages and FaceTime" }!
+        precondition(!messages.actionLabels(enable: false).contains("com.apple.imagent"), "Group Off must preserve the tested SMS dependency")
+        precondition(!messages.actionLabels(enable: false).contains("com.apple.identityservicesd"))
+        let account = OverrideServices.groups.first { $0.title == "Apple Account and settings sync" }!
+        for label in ["com.apple.absd", "com.apple.cdpd", "com.apple.followupd", "com.apple.identityservicesd", "com.apple.imagent", "com.apple.akd", "com.apple.adid", "com.apple.appleaccountd"] {
+            precondition(account.actionLabels(enable: true).contains(label), "Account On omitted a tested prerequisite")
+            precondition(!account.actionLabels(enable: false).contains(label), "Account Off disabled a protected prerequisite")
+        }
         print("Feature group policy checks passed")
     }
 }

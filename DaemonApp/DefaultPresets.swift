@@ -3,6 +3,11 @@ import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
+        "com.apple.cdpd": "Keep enabled for Core Data Protection and Apple Account setup. AuthKit logged failed CoreCDP status requests while this job was off. Restoring cdpd, followupd and identityservicesd together and restarting userspace restored full sign-in on the tested phone. Individual responsibility for the final server error was not isolated.",
+        "com.apple.followupd": "Keep enabled for Apple Account follow-up requests. AuthKit logged failed lookups for com.apple.corefollowup.agent while this job was off. It belongs to the tested account-repair set with cdpd and identityservicesd; individual responsibility for the final sign-in error was not isolated.",
+        "com.apple.identityservicesd": "Keep enabled for Identity Services and the tested Apple Account setup. It belongs to the account-repair set restored with cdpd/followupd before successful sign-in; individual responsibility for that final error was not isolated. Earlier tests also showed it repeatedly aborting when nehelper was disabled, and restoring nehelper recovered Messages.",
+        "com.apple.absd": "Keep enabled for Apple Account authentication. This job exports com.apple.absinthed. On the tested iOS 16.7.16 phone, Settings logged Absinthe/NAC initialization error -44303 with absd disabled and received HTTP 400 during iCloud sign-in. Enabling/loading absd and respringing changed NAC initialization to success. This establishes that authentication-stage dependency, not a Contacts role or a bootloop risk.",
+        "com.apple.imagent": "Keep enabled for Messages, including carrier SMS verification codes. With imagent disabled on the tested phone, CommCenter received SMS but Messages did not deliver the Apple verification code. Enabling/loading imagent and respringing restored SMS receipt. The group Off action preserves it; individual manual disabling remains available when Messages/SMS are unused.",
         "com.apple.pluginkit.pkd": "Keep enabled for app extensions and widgets. On an iPhone 8 Plus running iOS 16.7.16, starting SpringBoard with pkd disabled caused continuous widget-extension discovery retries at about one CPU core. Enabling/loading pkd and respringing reduced idle SpringBoard CPU to about 1.4%; disabling it before another respring reproduced the loop. Its builtin target is already enabled. Re-enable it and restart userspace to restore the dependency fully.",
         "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
         "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
@@ -156,12 +161,7 @@ struct SafetyManager {
         "com.apple.launchd": "Core init process and system service manager.",
     ]
 
-    // Dependency/functionality warnings observed during the 2026-10-11/12 device tests.
-    // These are recommendations, not claims that the services cause bootloops.
-    static let recommendedEnabled: [String: String] = [
-        "com.apple.imagent": "Recommended for Messages. Handles messaging accounts and communication; keep enabled when using Messages. You can disable it if you do not use that feature.",
-        "com.apple.identityservicesd": "Recommended for iMessage and FaceTime identity services. Keep enabled when using those features, together with nehelper. It repeatedly aborted when nehelper was disabled on the tested phone.",
-    ]
+    static let recommendedEnabled: [String: String] = [:]
 
     static func requiresWarning(_ label: String) -> Bool {
         isCritical(label)
@@ -189,6 +189,7 @@ struct SafetyManager {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
+        "com.apple.absd": "Exports the Absinthe authentication service. Restoring it resolved Apple Account NAC initialization failures on the tested phone; its broader private role is not established.",
         "com.tigisoftware.filza.helper": "Privileged helper for Filza file operations.",
         "com.openssh.sshd": "OpenSSH server providing remote shell and file transfer access.",
         "com.apple.replaykitangel": "ReplayKit screen recording and broadcast interface. Enable together with replayd for Screen Recording; Camera photos and Camera videos use separate services.",
@@ -467,8 +468,8 @@ struct DaemonDescriptions {
         "captiveagent": "Captive portal detection for public Wi‑Fi (Guideline: if-unused)",
         "com.apple.carkitd": "CarPlay core daemon (Guideline: if-unused)",
         "carkitd": "CarPlay core daemon (Guideline: if-unused)",
-        "com.apple.cdpd": "Private data-protection/escrow security service (Guideline: no)",
-        "cdpd": "Private data-protection/escrow security service (Guideline: no)",
+        "com.apple.cdpd": "Core Data Protection daemon providing com.apple.cdp.daemon for Apple Account protection and status requests. Part of the tested account sign-in repair set.",
+        "cdpd": "Core Data Protection daemon providing com.apple.cdp.daemon for Apple Account protection and status requests. Part of the tested account sign-in repair set.",
         "com.apple.certui.relay": "Certificate trust prompt relay (Guideline: no)",
         "certui.relay": "Certificate trust prompt relay (Guideline: no)",
         "com.apple.cfnetwork.AuthBrokerAgent": "Network authentication broker (Guideline: NO)",
@@ -639,8 +640,8 @@ struct DaemonDescriptions {
         "fitcore.session": "Fitness active-session support service (Guideline: if-unused)",
         "com.apple.fitnesscoachingd": "Fitness coaching notifications (Guideline: if-unused)",
         "fitnesscoachingd": "Fitness coaching notifications (Guideline: if-unused)",
-        "com.apple.followupd": "Settings follow-up suggestions/account reminders (Guideline: yes)",
-        "followupd": "Settings follow-up suggestions/account reminders (Guideline: yes)",
+        "com.apple.followupd": "CoreFollowUp daemon for account and Settings follow-up requests, exporting com.apple.corefollowup.agent. Part of the tested sign-in repair set.",
+        "followupd": "CoreFollowUp daemon for account and Settings follow-up requests, exporting com.apple.corefollowup.agent. Part of the tested sign-in repair set.",
         "com.apple.fontservicesd": "System font management and font downloads (Guideline: no)",
         "fontservicesd": "System font management and font downloads (Guideline: no)",
         "com.apple.fs_task_scheduler": "Filesystem maintenance scheduler (Guideline: no)",
@@ -703,8 +704,8 @@ struct DaemonDescriptions {
         "idscredentialsagent": "Identity Services credential agent (Guideline: no)",
         "com.apple.idsremoteurlconnectionagent": "Identity Services network agent (Guideline: no)",
         "idsremoteurlconnectionagent": "Identity Services network agent (Guideline: no)",
-        "com.apple.imagent": "iMessage account and messaging agent (Guideline: no)",
-        "imagent": "iMessage account and messaging agent (Guideline: no)",
+        "com.apple.imagent": "Messages backend for messaging accounts, including carrier SMS and iMessage. Disabling it prevented SMS verification delivery on the tested phone.",
+        "imagent": "Messages backend for messaging accounts, including carrier SMS and iMessage. Disabling it prevented SMS verification delivery on the tested phone.",
         "com.apple.imautomatichistorydeletionagent": "Automatic message-history deletion support (Guideline: yes)",
         "imautomatichistorydeletionagent": "Automatic message-history deletion support (Guideline: yes)",
         "com.apple.imtransferagent": "Transfers iMessage attachments/media (Guideline: no)",
@@ -1314,7 +1315,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.WebBookmarks.webbookmarksd": true,
         "com.apple.WirelessRadioManager": false,
         "com.apple.abm-helper": true,
-        "com.apple.absd": true,
+        "com.apple.absd": false,
         "com.apple.accessibility.axassetsd": true,
         "com.apple.accessibility.axremoted": true,
         "com.apple.accessibility.heard": false,
@@ -1373,7 +1374,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.calaccessd": true,
         "com.apple.captiveagent": true,
         "com.apple.carkitd": true,
-        "com.apple.cdpd": true,
+        "com.apple.cdpd": false,
         "com.apple.certui.relay": true,
         "com.apple.cfnetwork.AuthBrokerAgent": false,
         "com.apple.cfnetwork.cfnetworkagent": false,
@@ -1459,7 +1460,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.fitcore": true,
         "com.apple.fitcore.session": true,
         "com.apple.fitnesscoachingd": true,
-        "com.apple.followupd": true,
+        "com.apple.followupd": false,
         "com.apple.fontservicesd": false,
         "com.apple.fs_task_scheduler": false,
         "com.apple.fseventsd": false,
@@ -1758,7 +1759,8 @@ final class DefaultPresets: ObservableObject {
             // The old format copied every builtin value. Retain differing choices.
             let changed: Set<String> = ["com.apple.searchd", "com.apple.biomed", "com.apple.syncdefaultsd",
                                         "com.apple.imagent", "com.apple.identityservicesd", "com.apple.nehelper",
-                                        "com.apple.nehelper-embedded", "com.apple.mobile.lockdown"]
+                                        "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
+                                        "com.apple.cdpd", "com.apple.followupd"]
             customDefaults = legacy.filter { label, value in
                 let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value
