@@ -73,8 +73,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.11
+          tag_name: v1.0.12
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.11"
-          body: "Add cancellable memory stress allocations in 100 MiB increments filled with varied random data, minus/Clear controls, live app footprint/headroom and automatic release on sheet close/background. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.12"
+          body: "Move each Overrides feature group to a dedicated subpage with group controls, service details, AirDrop policy and restart actions. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

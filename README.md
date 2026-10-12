@@ -143,3 +143,9 @@ The Memory sheet provides +100 MiB, −100 MiB and Clear. Each plus maps a separ
 App footprint is measured using TASK_VM_INFO.phys_footprint. App allocation headroom comes from os_proc_available_memory through the SDK os/proc.h interface, is advisory and is independent of device free memory. Values update while the Memory sheet is open, with the existing two-second memory sampling. An allocation syscall failure is shown; iOS can still terminate the app while committing pages. Clear, Done, sheet dismissal and backgrounding release test allocations. This feature creates memory pressure; it does not add RAM or establish a performance/battery benefit.
 
 Focused Swift tests check different block contents, compression resistance, add/minus/clear accounting, cancelled partial mappings, invalid requests and live footprint reads. Native iPhone allocation/lifecycle behavior must also be verified after installation.
+
+## Overrides subpages (v1.0.12)
+
+Overrides is a compact navigation menu with one entry and saved-state summary per feature group. Each subpage contains that group’s On/Off controls, explanations, services and restart actions. AirDrop policy controls appear only on the AirDrop page. Individual Critical disables retain the MainView confirmation. Subpage navigation does not change service defaults or saved overrides.
+
+Feature coverage remains limited: on-device checks cover Camera photos/video, the Photos Share Sheet including Save to Files and WhatsApp, a built-in Set Flashlight shortcut, Screen Recording restored after respring, native AirDrop policy toggling, and allocation/minus/Clear/sheet-close memory controls. Account sign-in, cloud sync, purchases, FaceTime and an exhaustive service-combination stress test have not passed device verification. Inspecting plists, passing build tests, and high-memory allocation are not equivalent to proving those features work. The WhatsApp Meta AI action remains unresolved.
