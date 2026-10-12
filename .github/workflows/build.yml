@@ -78,8 +78,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.18
+          tag_name: v1.0.19
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.18"
-          body: "Add reversible SpringBoard interface controls for Control Center, App Library, Home dock and SpringBoard status bar, with a minimal rootless companion, applied-state reporting and removal. Today View remains accessible; RAM savings are unproven. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.19"
+          body: "Fix SpringBoard interface settings and applied-state reporting on rootless bootstraps whose mobile account home differs from the native iOS home. Add a regression test for this path mismatch. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

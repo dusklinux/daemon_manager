@@ -25,7 +25,9 @@ import json, os, pathlib, plistlib, pwd, re, subprocess, tempfile
 
 def ui_control(asset, action, values):
     mobile = pwd.getpwnam("mobile")
-    home = pathlib.Path(mobile.pw_dir)
+    # The rootless bootstrap's passwd home can be /var/jb/var/mobile.
+    # SpringBoard uses the native iOS mobile home, outside that bootstrap.
+    home = pathlib.Path("/var/mobile")
     folder = pathlib.Path("/var/jb/Library/MobileSubstrate/DynamicLibraries")
     config = home / "Library/Preferences/com.dusklinux.DaemonManagerUI.plist"
     report = home / "Library/Caches/daemon-manager-ui-runtime.json"

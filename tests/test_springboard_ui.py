@@ -28,8 +28,9 @@ class SpringBoardUIControlTests(unittest.TestCase):
         self.namespace = {}
         exec(script, self.namespace)
         original_path = pathlib.Path
-        self.namespace['pathlib'] = types.SimpleNamespace(Path=lambda p: self.folder if str(p) == '/var/jb/Library/MobileSubstrate/DynamicLibraries' else original_path(p))
-        self.mobile = types.SimpleNamespace(pw_dir=str(self.home), pw_uid=os.getuid(), pw_gid=os.getgid())
+        paths = {'/var/jb/Library/MobileSubstrate/DynamicLibraries': self.folder, '/var/mobile': self.home}
+        self.namespace['pathlib'] = types.SimpleNamespace(Path=lambda p: paths.get(str(p), original_path(p)))
+        self.mobile = types.SimpleNamespace(pw_dir=str(self.home / 'bootstrap-home'), pw_uid=os.getuid(), pw_gid=os.getgid())
         self.config = self.home / 'Library/Preferences/com.dusklinux.DaemonManagerUI.plist'
 
     def call(self, action, values=None, asset='missing-file'):
@@ -55,3 +56,12 @@ class SpringBoardUIControlTests(unittest.TestCase):
             self.call('set', {'dock': True}, asset=str(self.home / 'missing.dylib'))
         self.assertEqual(self.config.read_bytes(), original)
         self.assertEqual(list(self.folder.iterdir()), [])
+
+    def test_settings_use_native_home_when_bootstrap_home_differs(self):
+        asset = self.home / 'companion.dylib'
+        asset.write_bytes(b'fixture companion')
+        with mock.patch.object(self.namespace['os'], 'chown'):
+            state = self.call('set', {'controlCenter': True, 'dock': True}, asset=str(asset))
+        self.assertTrue(state['saved']['controlCenter'])
+        self.assertTrue(plistlib.loads(self.config.read_bytes())['dock'])
+        self.assertFalse(pathlib.Path(self.mobile.pw_dir).exists())
