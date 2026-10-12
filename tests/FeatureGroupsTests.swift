@@ -46,6 +46,11 @@ struct FeatureGroupsTests {
             precondition(cloud.actionLabels(enable: true).contains("com.apple.SecureBackupDaemon"))
             precondition(!cloud.actionLabels(enable: false).contains("com.apple.SecureBackupDaemon"))
         }
+        let photoSync = OverrideServices.groups.first { $0.title == "iCloud Photos" }!
+        for label in ["com.apple.contextstored", "com.apple.dasd"] {
+            precondition(photoSync.actionLabels(enable: true).contains(label))
+            precondition(!photoSync.actionLabels(enable: false).contains(label))
+        }
         print("Feature group policy checks passed")
     }
 }

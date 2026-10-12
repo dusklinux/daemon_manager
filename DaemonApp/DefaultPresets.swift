@@ -3,6 +3,7 @@ import Combine
 
 struct SafetyManager {
     static let criticalServices: [String: String] = [
+        "com.apple.contextstored": "Keep enabled for CoreDuet context and background scheduling. It exports com.apple.coreduetd.context. With this job off after a userspace restart, Photos/DAS context requests failed and DAS refused the waiting photo upload with zero observed Wi-Fi quality and insufficient data budget after the restart-delay policy cleared. Photos sync passed in the restored profile; the Off comparison reproduced the stall. This is a tested scheduling dependency, not only a Siri suggestions service.",
         "com.apple.SecureBackupDaemon": "Keep enabled for protected iCloud key recovery/escrow. After restoring the cloud-key syncing job, its key synchronization still failed at FetchMetaData with an explicit missing com.apple.SecureBackupDaemon XPC endpoint. Restoring this job and retrying changed protected key synchronization to success in the logs, and the user completed Settings verification with its notice clearing. Full file/photo sync must still be verified separately. Individual disabling remains available when this functionality is unused.",
         "com.apple.protectedcloudstorage.protectedcloudkeysyncing": "Keep enabled for protected iCloud encryption-key synchronization. With this job disabled, the tested CloudDocs/CloudKit profile failed user-key synchronization and encrypted zone preparation with an explicit missing-service XPC error. This is a logged cloud dependency failure, not a bootloop claim. Individual disabling remains available when protected cloud functionality is unused.",
         "com.apple.passd": "Keep enabled for Wallet/PassKit and App Store download confirmation. With passd disabled, a free App Store app failed to show its confirmation sheet; logs named the missing com.apple.passd.in-app-payment endpoint. Restoring only passd with the previously restored amsengagementd still enabled, then respringing, restored confirmation, download, installation and launch. The separate Wallet interface override remained disabled. Individual manual disabling remains available.",
@@ -517,8 +518,8 @@ struct DaemonDescriptions {
         "containermanagerd": "App sandbox and container manager (Guideline: NO)",
         "com.apple.containermanagerd.system": "System-level container manager (Guideline: NO)",
         "containermanagerd.system": "System-level container manager (Guideline: NO)",
-        "com.apple.contextstored": "Stores context for Siri/proactive features (Guideline: yes)",
-        "contextstored": "Stores context for Siri/proactive features (Guideline: yes)",
+        "com.apple.contextstored": "CoreDuet context store used by background scheduling and other context clients. Disabling reproduced Photos upload rejection from missing context, zero network-quality readings and insufficient data budget.",
+        "contextstored": "CoreDuet context store used by background scheduling and other context clients. Disabling reproduced Photos upload rejection from missing context, zero network-quality readings and insufficient data budget.",
         "com.apple.coordinated": "File/document coordination service (Guideline: no)",
         "coordinated": "File/document coordination service (Guideline: no)",
         "com.apple.corecaptured": "Low-level diagnostic capture service (Guideline: yes)",
@@ -1402,7 +1403,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.contactsd": false,
         "com.apple.containermanagerd": false,
         "com.apple.containermanagerd.system": false,
-        "com.apple.contextstored": true,
+        "com.apple.contextstored": false,
         "com.apple.coordinated": false,
         "com.apple.corecaptured": true,
         "com.apple.coredatad": false,
@@ -1765,7 +1766,7 @@ final class DefaultPresets: ObservableObject {
             let changed: Set<String> = ["com.apple.searchd", "com.apple.biomed", "com.apple.syncdefaultsd",
                                         "com.apple.imagent", "com.apple.identityservicesd", "com.apple.nehelper",
                                         "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
-                                        "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon"]
+                                        "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon", "com.apple.contextstored"]
             customDefaults = legacy.filter { label, value in
                 let oldBuiltin = changed.contains(label) ? true : Self.builtinDefaults[label]
                 return oldBuiltin != value
