@@ -6,25 +6,34 @@ struct OverridesView: View {
 
     var body: some View {
         NavigationStack {
-            List(OverrideServices.groups) { group in
+            List {
                 HStack(spacing: 8) {
-                    NavigationLink {
-                        OverrideGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.title)
-                            Text(overrideGroupState(group, model: model))
-                                .font(.caption).foregroundColor(.secondary)
-                        }
-                    }
-                    Button("On") { model.applyFeatureGroup(group, enable: true) }
-                        .buttonStyle(.bordered)
-                    Button("Off") { model.applyFeatureGroup(group, enable: false) }
-                        .buttonStyle(.bordered)
-                        .disabled(group.actionLabels(enable: false).isEmpty)
+                    NavigationLink("SpringBoard interfaces") { SpringBoardInterfacesView() }
+                    Button("On") { model.setSpringBoardInterfaces(disabled: false) }.buttonStyle(.bordered)
+                    Button("Off") { model.setSpringBoardInterfaces(disabled: true) }.buttonStyle(.bordered)
                 }
                 .disabled(model.isApplyingConfig || model.isDiagnosingDisk || model.isChangingAirDrop ||
                           !model.isProcessing.isEmpty || model.isScanningDaemons || model.isRefreshingState)
+                ForEach(OverrideServices.groups) { group in
+                    HStack(spacing: 8) {
+                        NavigationLink {
+                            OverrideGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(group.title)
+                                Text(overrideGroupState(group, model: model))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        Button("On") { model.applyFeatureGroup(group, enable: true) }
+                            .buttonStyle(.bordered)
+                        Button("Off") { model.applyFeatureGroup(group, enable: false) }
+                            .buttonStyle(.bordered)
+                            .disabled(group.actionLabels(enable: false).isEmpty)
+                    }
+                    .disabled(model.isApplyingConfig || model.isDiagnosingDisk || model.isChangingAirDrop ||
+                              !model.isProcessing.isEmpty || model.isScanningDaemons || model.isRefreshingState)
+                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Overrides")

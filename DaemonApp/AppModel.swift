@@ -77,6 +77,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var airDropAllowed: Bool?
     @Published private(set) var airDropError: String?
     @Published private(set) var isChangingAirDrop = false
+    @Published private(set) var springBoardUIState: SpringBoardUIState?
+    @Published private(set) var springBoardUIError: String?
 
     private var currentPid: pid_t? = nil
     private var disabledServices: Set<DisabledServiceKey>?
@@ -558,6 +560,39 @@ if rc == 0:
     }
 
     func refreshAirDrop() { runAirDropPolicy(action: "read") }
+    func refreshSpringBoardUI() { runSpringBoardUI(action: "read") }
+    func setSpringBoardInterface(_ key: String, disabled: Bool) {
+        runSpringBoardUI(action: "set", values: [key: disabled])
+    }
+    func setSpringBoardInterfaces(disabled: Bool) {
+        runSpringBoardUI(action: "set", values: Dictionary(uniqueKeysWithValues: SpringBoardUIControl.keys.map { ($0, disabled) }))
+    }
+    func removeSpringBoardUI() { runSpringBoardUI(action: "remove") }
+
+    private func runSpringBoardUI(action: String, values: [String: Bool] = [:]) {
+        guard !isApplyingConfig, !isChangingAirDrop, !isDiagnosingDisk, isProcessing.isEmpty else { return }
+        guard let asset = Bundle.main.path(forResource: "DaemonManagerUI", ofType: "dylib") else {
+            springBoardUIError = "The SpringBoard companion is missing from this build."
+            return
+        }
+        isApplyingConfig = true
+        springBoardUIError = nil
+        if action != "read" { liveLog = "Updating SpringBoard interfaces…\n"; showLogConsole = true }
+        let data = try! JSONSerialization.data(withJSONObject: [asset, action, values])
+        let script = SpringBoardUIControl.script + "\nimport base64\nui_control(*json.loads(base64.b64decode('\(data.base64EncodedString())')))\n"
+        let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
+        DispatchQueue.global(qos: .utility).async {
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let line = result.output.split(separator: "\n").first { $0.hasPrefix("ui_state=") }
+            let state = line.flatMap { try? JSONDecoder().decode(SpringBoardUIState.self, from: Data($0.dropFirst(9).utf8)) }
+            DispatchQueue.main.async {
+                self.isApplyingConfig = false
+                if action != "read" { self.liveLog += result.output + "\n[exit \(result.exitCode)]\n" }
+                if result.exitCode == 0, let state { self.springBoardUIState = state }
+                else { self.springBoardUIState = nil; self.springBoardUIError = result.output.isEmpty ? "Could not read interface settings." : result.output }
+            }
+        }
+    }
     func setAirDropAllowed(_ allowed: Bool) { runAirDropPolicy(action: allowed ? "on" : "off") }
 
     private func runAirDropPolicy(action: String) {
