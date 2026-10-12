@@ -44,16 +44,16 @@ class SpringBoardUIControlTests(unittest.TestCase):
 
     def test_old_runtime_pid_is_not_reported_as_applied(self):
         report = self.home / 'Library/Caches/daemon-manager-ui-runtime.json'
-        report.write_text(json.dumps({'pid': 9876, 'version': 1, 'supported': {}, 'disabled': {}}))
+        report.write_text(json.dumps({'pid': 9876, 'version': 2, 'supported': {}, 'disabled': {}}))
         self.assertIsNone(self.call('read')['runtime'])
-        report.write_text(json.dumps({'pid': 12345, 'version': 1, 'supported': {}, 'disabled': {}}))
+        report.write_text(json.dumps({'pid': 12345, 'version': 2, 'supported': {}, 'disabled': {}}))
         self.assertEqual(self.call('read')['runtime']['pid'], 12345)
 
     def test_missing_asset_preserves_existing_choices(self):
-        original = plistlib.dumps({'controlCenter': True, 'dock': False})
+        original = plistlib.dumps({'controlCenter': True, 'appLibrary': False})
         self.config.write_bytes(original)
         with self.assertRaises(FileNotFoundError):
-            self.call('set', {'dock': True}, asset=str(self.home / 'missing.dylib'))
+            self.call('set', {'appLibrary': True}, asset=str(self.home / 'missing.dylib'))
         self.assertEqual(self.config.read_bytes(), original)
         self.assertEqual(list(self.folder.iterdir()), [])
 
@@ -61,7 +61,7 @@ class SpringBoardUIControlTests(unittest.TestCase):
         asset = self.home / 'companion.dylib'
         asset.write_bytes(b'fixture companion')
         with mock.patch.object(self.namespace['os'], 'chown'):
-            state = self.call('set', {'controlCenter': True, 'dock': True}, asset=str(asset))
+            state = self.call('set', {'controlCenter': True, 'appLibrary': True}, asset=str(asset))
         self.assertTrue(state['saved']['controlCenter'])
-        self.assertTrue(plistlib.loads(self.config.read_bytes())['dock'])
+        self.assertTrue(plistlib.loads(self.config.read_bytes())['appLibrary'])
         self.assertFalse(pathlib.Path(self.mobile.pw_dir).exists())

@@ -5,15 +5,13 @@ struct SpringBoardInterfacesView: View {
     @Environment(\.scenePhase) private var scenePhase
     private let features: [(String, String, String)] = [
         ("controlCenter", "Control Center", "Disables presentation and its opening gesture. Shared networking, audio and device services remain available."),
-        ("appLibrary", "App Library", "Disables the App Library interface. Installed apps remain installed; use Home or Spotlight to open them."),
-        ("dock", "Home dock", "Hides the dock and its pinned icons. Their data and view remain allocated; RAM savings are unproven."),
-        ("statusBar", "SpringBoard status bar", "Hides SpringBoard’s status-bar views. It does not disable the underlying status services or each app’s own status bar; RAM savings are unproven.")
+        ("appLibrary", "App Library", "Disables the App Library interface. Installed apps remain installed; use Home or Spotlight to open them.")
     ]
 
     var body: some View {
         List {
             Section {
-                Text("On shows an interface; Off disables or hides it as described below. Respring after changing settings. These are SpringBoard controls, not separate daemons. No measured RAM saving is promised.")
+                Text("On enables an interface; Off disables its access as described below. Respring after changing settings. These are SpringBoard controls, not separate daemons. No measured RAM saving is promised.")
                     .font(.caption).foregroundColor(.secondary)
                 if let state = model.springBoardUIState {
                     Text(state.pending ? "Changes pending respring" : state.installed ? "Applied" : "Companion not installed")

@@ -78,8 +78,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.19
+          tag_name: v1.0.20
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.19"
-          body: "Fix SpringBoard interface settings and applied-state reporting on rootless bootstraps whose mobile account home differs from the native iOS home. Add a regression test for this path mismatch. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.20"
+          body: "Fix SpringBoard interface settings and applied-state reporting on rootless bootstraps whose mobile account home differs from the native iOS home. Remove cosmetic dock and status-bar hiding controls; retain Control Center and App Library access switches. Add a regression test for this path mismatch. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

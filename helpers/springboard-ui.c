@@ -31,9 +31,6 @@ extern int getpid(void);
 
 typedef void (*HookMessage)(Class, Selector, Implementation, Implementation *);
 static HookMessage hookMessage;
-static void (*dockLayout)(Object, Selector);
-static void (*modernStatusLayout)(Object, Selector);
-static void (*legacyStatusLayout)(Object, Selector);
 
 static Object string(const char *value) {
     return ((Object (*)(Class, Selector, const char *))objc_msgSend)(
@@ -58,22 +55,15 @@ static void hook(const char *name, const char *selector, Implementation replacem
 
 static _Bool denied(Object self, Selector cmd) { return 0; }
 static void noPresentation(Object self, Selector cmd, _Bool animated) {}
-static void hide(Object view) {
-    ((void (*)(Object, Selector, _Bool))objc_msgSend)(view, sel_registerName("setHidden:"), 1);
-}
-static void hiddenDockLayout(Object self, Selector cmd) { dockLayout(self, cmd); hide(self); }
-static void hiddenModernStatusLayout(Object self, Selector cmd) { modernStatusLayout(self, cmd); hide(self); }
-static void hiddenLegacyStatusLayout(Object self, Selector cmd) { legacyStatusLayout(self, cmd); hide(self); }
-
 __attribute__((constructor)) static void configure(void) {
     void *pool = objc_autoreleasePoolPush();
     Object home = NSHomeDirectory();
     Object path = childPath(home, "Library/Preferences/com.dusklinux.DaemonManagerUI.plist");
     Object settings = ((Object (*)(Class, Selector, Object))objc_msgSend)(
         objc_getClass("NSDictionary"), sel_registerName("dictionaryWithContentsOfFile:"), path);
-    const char *keys[] = {"controlCenter", "appLibrary", "dock", "statusBar"};
-    _Bool requested[4] = {0};
-    for (unsigned i = 0; i < 4; i++) {
+    const char *keys[] = {"controlCenter", "appLibrary"};
+    _Bool requested[2] = {0};
+    for (unsigned i = 0; i < 2; i++) {
         Object value = ((Object (*)(Object, Selector, Object))objc_msgSend)(
             settings, sel_registerName("objectForKey:"), string(keys[i]));
         requested[i] = value && (( _Bool (*)(Object, Selector))objc_msgSend)(value, sel_registerName("boolValue"));
@@ -81,19 +71,15 @@ __attribute__((constructor)) static void configure(void) {
     // ElleKit's documented Substrate compatibility entry point on this bootstrap.
     void *library = dlopen("/var/jb/usr/lib/libsubstrate.dylib", 1);
     hookMessage = library ? (HookMessage)dlsym(library, "MSHookMessageEx") : 0;
-    _Bool modern = compatible("_UIStatusBar", "layoutSubviews", "v16@0:8");
-    _Bool legacy = compatible("UIStatusBar", "layoutSubviews", "v16@0:8");
-    _Bool supported[4] = {
+    _Bool supported[2] = {
         compatible("SBControlCenterController", "canBePresented", "B16@0:8") &&
         compatible("SBControlCenterController", "allowShowTransitionSystemGesture", "B16@0:8") &&
         compatible("SBControlCenterController", "presentAnimated:", "v20@0:8B16"),
         compatible("SBIconController", "isAppLibraryAllowed", "B16@0:8") &&
-        compatible("SBIconController", "isAppLibrarySupported", "B16@0:8"),
-        compatible("SBDockView", "layoutSubviews", "v16@0:8"),
-        modern || legacy
+        compatible("SBIconController", "isAppLibrarySupported", "B16@0:8")
     };
-    _Bool active[4] = {0};
-    for (unsigned i = 0; i < 4; i++) {
+    _Bool active[2] = {0};
+    for (unsigned i = 0; i < 2; i++) {
         supported[i] = supported[i] && hookMessage;
         active[i] = supported[i] && requested[i];
     }
@@ -106,19 +92,14 @@ __attribute__((constructor)) static void configure(void) {
         hook("SBIconController", "isAppLibraryAllowed", (Implementation)denied, 0);
         hook("SBIconController", "isAppLibrarySupported", (Implementation)denied, 0);
     }
-    if (active[2]) hook("SBDockView", "layoutSubviews", (Implementation)hiddenDockLayout, (Implementation *)&dockLayout);
-    if (active[3]) {
-        if (modern) hook("_UIStatusBar", "layoutSubviews", (Implementation)hiddenModernStatusLayout, (Implementation *)&modernStatusLayout);
-        if (legacy) hook("UIStatusBar", "layoutSubviews", (Implementation)hiddenLegacyStatusLayout, (Implementation *)&legacyStatusLayout);
-    }
     Object reportPath = childPath(home, "Library/Caches/daemon-manager-ui-runtime.json");
     const char *reportCString = ((const char *(*)(Object, Selector))objc_msgSend)(reportPath, sel_registerName("UTF8String"));
     File *file = fopen(reportCString, "w");
     if (file) {
-        fprintf(file, "{\"pid\":%d,\"version\":1,\"supported\":{", getpid());
-        for (unsigned i = 0; i < 4; i++) fprintf(file, "%s\"%s\":%s", i ? "," : "", keys[i], supported[i] ? "true" : "false");
+        fprintf(file, "{\"pid\":%d,\"version\":2,\"supported\":{", getpid());
+        for (unsigned i = 0; i < 2; i++) fprintf(file, "%s\"%s\":%s", i ? "," : "", keys[i], supported[i] ? "true" : "false");
         fprintf(file, "},\"disabled\":{");
-        for (unsigned i = 0; i < 4; i++) fprintf(file, "%s\"%s\":%s", i ? "," : "", keys[i], active[i] ? "true" : "false");
+        for (unsigned i = 0; i < 2; i++) fprintf(file, "%s\"%s\":%s", i ? "," : "", keys[i], active[i] ? "true" : "false");
         fprintf(file, "}}\n");
         fclose(file);
     }
