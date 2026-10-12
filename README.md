@@ -135,3 +135,11 @@ TrollStore installation of v1.0.8 preserved the AirDrop helper’s feature entit
 v1.0.9 compiled and passed group checks but crashed when service descriptions initialized: a newly added FileProvider entry duplicated an existing dictionary key. v1.0.10 removes it. Python checks now reject duplicate description keys, and the Swift group test initializes the actual description dictionary. A successful uiopen request is not proof that an app stayed running; device launch verification follows installation.
 
 Search and the memory number/theme switch now share one row in Services and Critical. The filter occupies the next row. Memory stays tappable for details and is displayed as the MiB number without a unit/label, circle or chevron. Critical red styling and individual confirmations remain; the pinned category headings and separate top bar are removed.
+
+## Manual memory stress test (v1.0.11)
+
+The Memory sheet provides +100 MiB, −100 MiB and Clear. Each plus maps a separate anonymous 100 MiB block and fills every byte with fresh arc4random_buf data in 1 MiB chunks on a serial worker. The varied content resists compression; it is not a repeated page or zero-fill. Between chunks the worker yields briefly, and cancellation checks let Clear or closing/backgrounding interrupt an unfinished fill. Held allocations are not continuously rewritten. Minus/Clear unmap blocks directly rather than retaining malloc caches. No root helper, permanent worker, memory-limit entitlement or Jetsam immunity is added.
+
+App footprint is measured using TASK_VM_INFO.phys_footprint. App allocation headroom comes from os_proc_available_memory through the SDK os/proc.h interface, is advisory and is independent of device free memory. Values update while the Memory sheet is open, with the existing two-second memory sampling. An allocation syscall failure is shown; iOS can still terminate the app while committing pages. Clear, Done, sheet dismissal and backgrounding release test allocations. This feature creates memory pressure; it does not add RAM or establish a performance/battery benefit.
+
+Focused Swift tests check different block contents, compression resistance, add/minus/clear accounting, cancelled partial mappings, invalid requests and live footprint reads. Native iPhone allocation/lifecycle behavior must also be verified after installation.

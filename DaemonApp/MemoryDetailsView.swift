@@ -4,6 +4,7 @@ struct MemoryDetailsView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var stress = MemoryStressModel()
 
     private var pressureColor: Color {
         switch model.memoryPressure {
@@ -17,6 +18,27 @@ struct MemoryDetailsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Memory stress test") {
+                    memoryRow("Test allocation", Double(stress.allocatedBytes) / 1_048_576.0)
+                    HStack {
+                        Button("+100 MiB") { stress.add() }
+                            .disabled(stress.isWorking || scenePhase != .active)
+                        Button("−100 MiB") { stress.subtract() }
+                            .disabled(stress.isWorking || stress.allocatedBytes == 0)
+                        Spacer()
+                        Button("Clear") { stress.clear() }
+                            .disabled(!stress.isWorking && stress.allocatedBytes == 0)
+                    }
+                    .buttonStyle(.bordered)
+                    if stress.isWorking { ProgressView("Updating allocation…") }
+                    if let process = stress.processMemory {
+                        memoryRow("App footprint", process.footprintMiB)
+                        if let headroom = process.headroomMiB { memoryRow("App allocation headroom", headroom) }
+                    }
+                    if let error = stress.error { Text(error).font(.caption).foregroundColor(.red) }
+                    Text("Each addition writes varied random data into 100 MiB. Held pages are not continually rewritten. Pressure can compress other pages or terminate apps; this is a stress test, not additional RAM. Clear releases test memory. Closing this sheet or backgrounding releases it automatically. App headroom is advisory and can change; Jetsam limits still apply.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
                 Section("Memory pressure") {
                     HStack {
                         Circle().fill(pressureColor).frame(width: 10, height: 10)
@@ -81,16 +103,22 @@ struct MemoryDetailsView: View {
                         .disabled(model.isReadingMemoryPressure)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { stress.clear(); dismiss() }
                 }
             }
         }
         .task {
             model.refreshMemoryDetails()
+            stress.refreshProcessMemory()
         }
+        .onReceive(model.$memorySnapshot) { _ in stress.refreshProcessMemory() }
+        .onDisappear { stress.clear() }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 model.refreshMemoryDetails()
+                stress.refreshProcessMemory()
+            } else if phase == .background {
+                stress.clear()
             }
         }
     }

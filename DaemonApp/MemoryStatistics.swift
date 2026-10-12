@@ -1,6 +1,28 @@
 import Foundation
 import Darwin
 
+struct ProcessMemorySnapshot {
+    let footprintMiB: Double
+    let headroomMiB: Double?
+
+    static func read() -> ProcessMemorySnapshot? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.stride / MemoryLayout<integer_t>.stride)
+        let status = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard status == KERN_SUCCESS else { return nil }
+        #if os(iOS)
+        let headroom: Double? = Double(os_proc_available_memory()) / 1_048_576.0
+        #else
+        let headroom: Double? = nil
+        #endif
+        return ProcessMemorySnapshot(footprintMiB: Double(info.phys_footprint) / 1_048_576.0, headroomMiB: headroom)
+    }
+}
+
 // XNU host_statistics64 free_count already includes speculative_count.
 struct MemorySnapshot {
     let sampledAt: Date
