@@ -104,7 +104,11 @@ struct MainView: View {
                         .toolbarBackground(.visible, for: .tabBar)
 
                     // TAB 3: Tested optional feature overrides
-                    OverridesView()
+                    OverridesView(onSafetyPrompt: { service, enable in
+                        pendingToggleService = service
+                        pendingToggleAction = enable
+                        showSafetyAlert = true
+                    })
                         .tabItem { Label("Overrides", systemImage: "switch.2") }
                         .tag(2)
                         .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)

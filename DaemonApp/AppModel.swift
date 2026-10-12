@@ -346,7 +346,7 @@ if rc == 0:
     }
 
     // Native batch executor with live progress
-    private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String) {
+    private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String, live: Bool = false, completion: ((Bool) -> Void)? = nil) {
         guard !isDiagnosingDisk, !isChangingAirDrop else { return }
         let pwd = self.rootPassword
         var seen = Set<DisabledServiceKey>()
@@ -358,6 +358,7 @@ if rc == 0:
         
         guard total > 0 else {
             statusMessage = "All requested daemons already match target state."
+            completion?(true)
             return
         }
 
@@ -375,7 +376,7 @@ if rc == 0:
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let rawCmd = self.nativeOverrideCommand(operations: operations)
+            let rawCmd = self.nativeOverrideCommand(operations: operations, live: live)
             let elevated = self.buildElevatedCommand(rawCommand: rawCmd, pwd: pwd)
 
             var completedCount = 0
@@ -398,16 +399,38 @@ if rc == 0:
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- BATCH COMPLETED WITH EXIT CODE \(exitCode) ---\n"
                     self.applyProgressText = nil
-                    self.isApplyingConfig = false
-                    self.refreshState()
+                    self.refreshState {
+                        DispatchQueue.main.async {
+                            self.isApplyingConfig = false
+                            completion?(exitCode == 0)
+                        }
+                    }
                     if exitCode == 0 {
-                        self.statusMessage = "\(total) overrides saved. Restart userspace to apply the process changes fully."
+                        self.statusMessage = live
+                            ? "\(total) feature overrides and loaded jobs verified. Respring if a client retained its previous state."
+                            : "\(total) overrides saved. Restart userspace to apply the process changes fully."
                     } else {
                         self.statusMessage = nil
                         self.errorMessage = "\(title) failed or only partially applied (exit \(exitCode)). Review the execution log."
                     }
                 }
             }
+        }
+    }
+
+    func applyFeatureGroup(_ group: OverrideGroup, enable: Bool) {
+        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk,
+              !isChangingAirDrop, isProcessing.isEmpty else { return }
+        let labels = Set(group.actionLabels(enable: enable))
+        let operations = allDaemons.filter { service in
+            guard labels.contains(service.label) else { return false }
+            // Feature jobs are reverified even if their saved state already matches.
+            // Shared dependencies are enabled only when their override is disabled.
+            return group.labels.contains(service.label) || isDisabled(service) == true
+        }.map { (service: $0, disable: !enable) }
+        let live = operations.allSatisfy { OverrideServices.labels.contains($0.service.label) }
+        executeNativeBatch(operations: operations, title: "\(group.title): \(enable ? "On" : "Off")", live: live) { success in
+            if success && group.controlsAirDrop { self.setAirDropAllowed(enable) }
         }
     }
 
