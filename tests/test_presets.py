@@ -25,7 +25,7 @@ class PresetTests(unittest.TestCase):
         labels = re.findall(r'"([^\"]+)":', critical)
         self.assertFalse([label for label in labels if builtin.get(label) is True])
         for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
-                      'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer'):
+                      'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
             self.assertIs(builtin['com.apple.' + label], False)
 
     def test_recommendations_are_enabled_and_separate_from_critical(self):
@@ -36,7 +36,7 @@ class PresetTests(unittest.TestCase):
         recommended = labels('recommendedEnabled', 'String')
         critical = labels('criticalServices', 'String')
         self.assertFalse(recommended & critical)
-        for label in ('imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer'):
+        for label in ('imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
             self.assertIn('com.apple.' + label, recommended)
             self.assertNotIn('com.apple.' + label, critical)
 

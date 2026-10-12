@@ -66,8 +66,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.6
+          tag_name: v1.0.7
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.6"
-          body: "Remove tweak-dependent animation controls, add optional accessibility host control, and clarify disk write-counter units. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.7"
+          body: "Warn about the reproduced SpringBoard widget-discovery CPU loop when pkd is disabled. Keep the existing enabled default and document the measured device repair. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

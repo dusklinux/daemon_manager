@@ -6,7 +6,7 @@ Tap a service name or chevron for its known description, launchd plist and execu
 
 The tab bar has an opaque standard and scroll-edge appearance from initial launch. RAM displays only the value and unit, for example **365 MiB**. The header is kernel free memory including speculative pages, with each page counted once. Tap it for a live memory sheet.
 
-`daemon.cfg` matches all 506 builtin targets: **320 off, 186 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect a 2026-10-11 iPhone 8 Plus test:
+`daemon.cfg` matches all 506 builtin targets: **320 off, 186 on**. `yes` = disabled override; `no` = enabled override. All entries remain manually configurable. Existing critical warnings are retained; the following orange **RECOMMENDED ON** recommendations reflect 2026-10-11/12 iPhone 8 Plus tests:
 
 - `searchd`: repeated Photos Spotlight retries and sustained CPU during broad live unloading; fresh boot and a short single-service comparison did not reproduce it, so causality remains unproven.
 - `biomed`: SpringBoard/keyboard Biome metadata and lockfile errors with the service off.
@@ -14,6 +14,7 @@ The tab bar has an opaque standard and scroll-edge appearance from initial launc
 - `imagent` and `identityservicesd`: keep enabled for Messages/iMessage/FaceTime.
 - `nehelper` (plist filename alias `nehelper-embedded`): required by Identity Services to create its network interface. Its absence caused repeated identityservicesd aborts and a black Messages screen; enabling it restored conversations. It also serves other Network Extension clients.
 - `mobile.lockdown`: paired USB tools failed when disabled and worked after restoration; keep enabled for pairing/computer backups.
+- `pluginkit.pkd`: starting SpringBoard with it disabled reproduced continuous widget-extension discovery retries and about one CPU core of use. Restoring it and respringing returned idle SpringBoard to about 1.4% CPU. Its builtin target was already enabled; this was an additional manual disable.
 
 These recommendations do not claim new bootloop risks. The earlier full-off profile passed user-confirmed basic usage after reboot, but logs were not clean and the >600 MiB physical-free idle target was not established. No broad performance or battery-life gain is claimed.
 
@@ -90,3 +91,13 @@ Basic usage passed on the tested phone after host disabling and reboot. Remainin
 Animation controls and their helper were removed from the app. The independently installed animation tweak is left active and managed outside this app. RAM remains memory-only. Disk write counters use grouped raw numbers and can be tapped for their meaning and conversion status. GB conversion remains unavailable: the ASP snapshot and installed diagnostic parser did not establish bytes per count; page size or generic NVMe units cannot substitute for that evidence. No guessed conversion is shipped.
 
 The unsupported absd Contacts description and related database links were removed. Its actual plist exports com.apple.absinthed and com.apple.absd; the broader private role remains undocumented here. Verified Contacts database links remain for contactsd and ABDatabaseDoctor.
+
+## SpringBoard CPU dependency fix (v1.0.7)
+
+On 2026-10-12, the iPhone 8 Plus running iOS 16.7.16 had `com.apple.pluginkit.pkd` manually disabled and unloaded. SpringBoard PID 7778 consumed 5.153 CPU seconds in a 5.00-second targeted spindump (103.1% of one core). The hot stacks repeatedly entered `WGWidgetDataSourceManager _beginContinuousPlugInDiscovery`, ExtensionFoundation and PlugInKit, with `pkd_client` replies formatting errors and hundreds of discovery-driver queues. The shell's `ps` reported zero CPU/time for this process, so it was not used as the measurement.
+
+Enabling and bootstrapping pkd alone left the existing SpringBoard retry loop running. After starting pkd in its observed `user/501` domain and respringing, a settled 15-second sample used 0.209 CPU seconds (1.4%), and the retry stacks disappeared. Unloading pkd from this already initialized SpringBoard did not reproduce the loop in a short sample. Disabling/unloading it and then respringing did: the new SpringBoard used 11.434 CPU seconds in 10.00 seconds (114.3%) with the same widget-discovery stacks. Pkd was restored and SpringBoard resprung again. The sole saved override changed was pkd; other manual choices and tweaks were retained.
+
+This establishes the missing dependency as the trigger for the observed startup retry loop on this installation. It does not establish that every iOS version or tweak configuration behaves identically. Thermal pressure was still elevated during the immediate samples; no temperature decrease or battery-life gain is claimed. Unified log relay was unavailable, but the CPU counters and symbolicated client stacks were collected directly with spindump.
+
+The app now marks pkd **Recommended On** with the measured consequence. The builtin/config target remains enabled and the 506-target counts are unchanged. Explicit custom off choices remain editable; installation does not apply defaults or repair a live dependency automatically. Re-enable pkd and restart userspace to apply the process change fully. The repair on this phone loaded pkd and resprung SpringBoard; it did not reset the launchd database.

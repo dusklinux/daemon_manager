@@ -149,9 +149,10 @@ struct SafetyManager {
         "com.apple.launchd": "Core init process and system service manager.",
     ]
 
-    // Dependency/functionality warnings observed during the 2026-10-11 device test.
+    // Dependency/functionality warnings observed during the 2026-10-11/12 device tests.
     // These are recommendations, not claims that the services cause bootloops.
     static let recommendedEnabled: [String: String] = [
+        "com.apple.pluginkit.pkd": "Keep enabled for app extensions and widgets. On an iPhone 8 Plus running iOS 16.7.16, starting SpringBoard with pkd disabled caused continuous widget-extension discovery retries at about one CPU core. Enabling/loading pkd and respringing reduced idle SpringBoard CPU to about 1.4%; disabling it before another respring reproduced the loop. Its builtin target is already enabled. Re-enable it and restart userspace to restore the dependency fully.",
         "com.apple.AccessibilityUIServer": "Keep enabled for accessibility features. Turning it off can make accessibility controls unavailable and logs unavailable-host messages. Basic Home, Notes, Camera and Messages checks passed after reboot on one iOS 16 phone with Back Tap and Speak Screen off; other accessibility features were not tested. Re-enable and restart userspace before using them.",
         "com.apple.searchd": "Keep enabled for Spotlight and Photos queries. During broad live unloading, Photos repeatedly retried failed Spotlight queries and used about one CPU core. The single-service comparison did not reproduce the loop; the exact trigger remains unproven.",
         "com.apple.biomed": "Keep enabled for Biome data access. With this service off, SpringBoard and the keyboard logged repeated metadata and lockfile failures. Basic usage still passed, but clients lost access to this store.",
