@@ -6,6 +6,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class PresetTests(unittest.TestCase):
+    def test_description_dictionary_has_no_duplicate_keys(self):
+        source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
+        descriptions = source.split('static let dict: [String: String] = [', 1)[1].split('\n    ]', 1)[0]
+        keys = re.findall(r'^        "([^\"]+)":', descriptions, re.M)
+        self.assertEqual(len(keys), len(set(keys)), 'Duplicate descriptions crash Swift dictionary initialization')
+
     def test_config_matches_builtin_targets(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
         block = source.split('static let builtinDefaults: [String: Bool] = [', 1)[1].split('\n    ]', 1)[0]

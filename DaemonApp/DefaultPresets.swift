@@ -189,7 +189,6 @@ struct SafetyManager {
 
 struct DaemonDescriptions {
     static let dict: [String: String] = [
-        "com.apple.FileProvider": "FileProvider framework daemon hosting and coordinating file-provider extensions. Shared by Files and apps accessing provider-backed documents.",
         "com.tigisoftware.filza.helper": "Privileged helper for Filza file operations.",
         "com.openssh.sshd": "OpenSSH server providing remote shell and file transfer access.",
         "com.apple.replaykitangel": "ReplayKit screen recording and broadcast interface. Enable together with replayd for Screen Recording; Camera photos and Camera videos use separate services.",

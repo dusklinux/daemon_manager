@@ -3,6 +3,7 @@ import Foundation
 @main
 struct FeatureGroupsTests {
     static func main() {
+        precondition(DaemonDescriptions.get(for: "com.apple.FileProvider") != nil)
         let critical = "com.apple.appleaccountd"
         let optional = "com.apple.cloudd"
         let dependency = "com.apple.accountsd"

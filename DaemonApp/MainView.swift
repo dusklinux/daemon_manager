@@ -11,48 +11,9 @@ struct MainView: View {
     @State private var pendingToggleService: LaunchdService? = nil
     @State private var pendingToggleAction: Bool = false
     @State private var showSafetyAlert = false
-    @State private var showMemoryDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // TOP STATUS BAR: RAM Usage & Quick Info
-            HStack(spacing: 12) {
-                Button { showMemoryDetails = true } label: {
-                    HStack(spacing: 6) {
-                        Circle().fill(ramColor).frame(width: 10, height: 10)
-                        Text(model.ramUsageText)
-                            .font(.system(.subheadline, design: .monospaced, weight: .bold))
-                            .foregroundColor(ramColor)
-                        Image(systemName: "chevron.down").font(.caption2).foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Memory details, \(model.ramUsageText)")
-
-                Spacer()
-
-                if model.isApplyingConfig {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        if let txt = model.applyProgressText {
-                            Text(txt)
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                Button(action: { model.isDarkTheme.toggle() }) {
-                    Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
-                        .foregroundColor(.primary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(UIColor.secondarySystemBackground))
-
             // Live status banner
             if let status = model.statusMessage {
                 HStack {
@@ -127,12 +88,6 @@ struct MainView: View {
                 }
             }
         }
-        .sheet(isPresented: $showMemoryDetails) {
-            MemoryDetailsView()
-                .environmentObject(model)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
         .alert(
             "Service Disable Warning",
             isPresented: $showSafetyAlert,
@@ -177,15 +132,6 @@ struct MainView: View {
         }
         .statusBarHidden(true)
     }
-
-    private var ramColor: Color {
-        switch model.memoryPressure {
-        case .normal: return .green
-        case .warning: return .orange
-        case .critical: return .red
-        case nil: return .secondary
-        }
-    }
 }
 
 // MARK: - Tab 1: Live Services
@@ -193,6 +139,7 @@ struct LiveServicesView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var presets = DefaultPresets.shared
     @State private var searchText = ""
+    @State private var showMemoryDetails = false
     @State private var filter: FilterType = .all
     var criticalOnly = false
     let onSafetyPrompt: (LaunchdService, Bool) -> Void
@@ -237,30 +184,34 @@ struct LiveServicesView: View {
         VStack(spacing: 0) {
             // Search Bar & Filter
             VStack(spacing: 8) {
-                if criticalOnly {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Critical services").font(.headline)
-                        Text("Keep these core services enabled. Disabling them can break core usage, boot, or stability; expand a service to see its specific warning.")
-                            .font(.caption).foregroundColor(.secondary)
-                        Text("\(services.filter { model.isDisabled($0) == true }.count) disabled • Disabled entries appear first and stay in this tab.")
-                            .font(.caption.weight(.semibold)).foregroundColor(.red)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                    TextField(criticalOnly ? "Search critical services..." : "Search daemons...", text: $searchText)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                HStack(spacing: 10) {
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                        TextField(criticalOnly ? "Search critical services..." : "Search daemons...", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                            }
                         }
                     }
+                    .padding(8)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .cornerRadius(10)
+                    Button { showMemoryDetails = true } label: {
+                        Text(model.ramUsageText.components(separatedBy: " ").first ?? "—")
+                            .font(.system(.subheadline, design: .monospaced, weight: .bold))
+                            .foregroundColor(ramColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Available memory in MiB, \(model.ramUsageText)")
+                    Button { model.isDarkTheme.toggle() } label: {
+                        Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
+                            .foregroundColor(.primary)
+                    }
+                    .accessibilityLabel("Switch theme")
                 }
-                .padding(8)
-                .background(Color(UIColor.tertiarySystemBackground))
-                .cornerRadius(10)
 
                 Picker("Filter", selection: $filter) {
                     ForEach(FilterType.allCases, id: \.self) { f in
@@ -292,15 +243,30 @@ struct LiveServicesView: View {
                         let ordinary = filteredServices.filter { !SafetyManager.isCritical($0.label) }
                         let critical = filteredServices.filter { SafetyManager.isCritical($0.label) }
                         if !ordinary.isEmpty {
-                            Section("Non-critical services") { serviceRows(ordinary) }
+                            serviceRows(ordinary)
                         }
                         if !critical.isEmpty {
-                            Section("Critical — also in the Critical tab") { serviceRows(critical) }
+                            serviceRows(critical)
                         }
                     }
                 }
                 .listStyle(.plain)
             }
+        }
+        .sheet(isPresented: $showMemoryDetails) {
+            MemoryDetailsView()
+                .environmentObject(model)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var ramColor: Color {
+        switch model.memoryPressure {
+        case .normal: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        case nil: return .secondary
         }
     }
 

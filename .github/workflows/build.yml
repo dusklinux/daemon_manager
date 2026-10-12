@@ -71,8 +71,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
+          tag_name: v1.0.10
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.9"
-          body: "Add feature-group On/Off controls. Group Off preserves Critical/shared dependencies; AirDrop groups include the native feature policy. Document the verified screen-recording respring requirement and distinguish tested hosts from account/sync groups. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.10"
+          body: "Fix a duplicate description key that crashed launch. Consolidate available-memory number and theme control beside Search and remove pinned service category headings. Retain feature-group controls. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
