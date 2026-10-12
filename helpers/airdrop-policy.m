@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
         }
         void *framework = dlopen("/System/Library/PrivateFrameworks/ManagedConfiguration.framework/ManagedConfiguration", RTLD_NOW);
         Class cls = NSClassFromString(@"MCProfileConnection");
-        NSString *__unsafe_unretained *setting = framework ? dlsym(framework, "MCFeatureAirDropAllowed") : NULL;
+        NSString *__unsafe_unretained *setting = framework ? (NSString *__unsafe_unretained *)dlsym(framework, "MCFeatureAirDropAllowed") : NULL;
         if (!cls || !setting || !*setting || ![cls respondsToSelector:@selector(sharedConnection)]) {
             fprintf(stderr, "AirDrop policy API unavailable\n");
             return 1;
