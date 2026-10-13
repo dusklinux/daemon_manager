@@ -145,7 +145,7 @@ final class AppModel: ObservableObject {
     }
 
     func canToggle(_ service: LaunchdService) -> Bool {
-        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isDiagnosingDisk && !isChangingAirDrop && !isProcessing.contains(service.id)
+        service.domain != nil && disabledServices != nil && !isApplyingConfig && !isDiagnosingDisk && !isChangingAirDrop && !isRefreshingState && !isScanningDaemons && isProcessing.isEmpty
     }
 
     func toggleUnavailableReason(_ service: LaunchdService) -> String? {
@@ -206,7 +206,7 @@ if rc == 0:
 """#
         let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
         DispatchQueue.global(qos: .utility).async {
-            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput, trackProcess: false)
             let line = result.output.split(separator: "\n").first { $0.hasPrefix("pressure=") }
             let value = line.flatMap { Int32($0.dropFirst("pressure=".count)) }
             let pressure = value.flatMap { MemoryPressure(rawValue: $0) }
@@ -229,7 +229,7 @@ if rc == 0:
         let script = DiskDiagnostics.script + "\nrun(" + (generate ? "True" : "False") + ")\n"
         let command = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
         DispatchQueue.global(qos: .utility).async {
-            let result = self.posixRunSync(executable: command.executable, args: command.arguments, trackProcess: false)
+            let result = self.posixRunSync(executable: command.executable, args: command.arguments, standardInput: command.standardInput, trackProcess: false)
             let lines = result.output.split(separator: "\n")
             let json = lines.first { $0.hasPrefix("disk_report=") }.map { Data($0.dropFirst(12).utf8) }
             let report = json.flatMap { try? JSONDecoder().decode(DiskHealthReport.self, from: $0) }
@@ -258,7 +258,7 @@ if rc == 0:
                 merged.formUnion(self.parseDisabledServices(from: result.output, domain: domain))
             }
             DispatchQueue.main.async {
-                if failures.isEmpty { self.disabledServices = merged }
+                self.disabledServices = failures.isEmpty ? merged : nil
                 self.isRefreshingState = false
                 if !failures.isEmpty { self.errorMessage = failures.joined(separator: "\n\n") }
                 completion?()
@@ -302,11 +302,11 @@ if rc == 0:
         let pwd = self.rootPassword
         let action = enable ? "enable" : "disable"
         
-        DispatchQueue.main.async { self.isProcessing.insert(service.id) }
+        isProcessing.insert(service.id)
         DispatchQueue.global(qos: .userInitiated).async {
             let cmd = self.nativeOverrideCommand(operations: [(service, !enable)], live: OverrideServices.labels.contains(service.label))
             let elevated = self.buildElevatedCommand(rawCommand: cmd, pwd: pwd)
-            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput)
             guard result.exitCode == 0 else {
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
@@ -327,7 +327,8 @@ if rc == 0:
 
     // Apply changed builtin or explicitly customized targets.
     func applyAllDefaults() {
-        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop else { return }
+        guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop,
+              !isRefreshingState, !isScanningDaemons, isProcessing.isEmpty else { return }
         let presets = DefaultPresets.shared
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         
@@ -349,7 +350,7 @@ if rc == 0:
 
     // Native batch executor with live progress
     private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String, live: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
+        guard !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop, isProcessing.isEmpty else { return }
         let pwd = self.rootPassword
         var seen = Set<DisabledServiceKey>()
         let operations = operations.filter { op in
@@ -366,16 +367,14 @@ if rc == 0:
 
         let warningCount = operations.filter { SafetyManager.requiresWarning($0.service.label) && $0.disable }.count
 
-        DispatchQueue.main.async {
-            self.isApplyingConfig = true
-            self.showLogConsole = true
-            var startLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
-            if warningCount > 0 {
-                startLog += "[!] CAUTION: \(warningCount) services with keep-enabled warnings included in disable batch.\n"
-            }
-            self.liveLog = startLog
-            self.applyProgressText = "\(title) [0/\(total)]"
+        isApplyingConfig = true
+        showLogConsole = true
+        var startLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
+        if warningCount > 0 {
+            startLog += "[!] CAUTION: \(warningCount) services with keep-enabled warnings included in disable batch.\n"
         }
+        liveLog = startLog
+        applyProgressText = "\(title) [0/\(total)]"
 
         DispatchQueue.global(qos: .userInitiated).async {
             let rawCmd = self.nativeOverrideCommand(operations: operations, live: live)
@@ -385,7 +384,8 @@ if rc == 0:
             var pendingOutput = ""
             self.posixRunAsync(
                 executable: elevated.executable,
-                args: elevated.arguments
+                args: elevated.arguments,
+                standardInput: elevated.standardInput
             ) { liveText in
                 DispatchQueue.main.async {
                     self.liveLog += liveText
@@ -438,7 +438,7 @@ if rc == 0:
 
     // Emergency Factory Reset (borrowed from Geranium)
     func emergencyResetLaunchd() {
-        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
+        guard !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop, isProcessing.isEmpty else { return }
         let pwd = self.rootPassword
         let resetScript = """
         cp /var/db/com.apple.xpc.launchd/disabled.plist /var/db/com.apple.xpc.launchd/disabled.backup 2>/dev/null
@@ -447,7 +447,7 @@ if rc == 0:
         
         let elevated = buildElevatedCommand(rawCommand: resetScript, pwd: pwd)
         DispatchQueue.global(qos: .userInitiated).async {
-            let res = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            let res = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput)
             DispatchQueue.main.async {
                 if res.exitCode == 0 {
                     self.statusMessage = "Launchd disabled database reset. Backup saved to disabled.backup. Please userspace reboot or respring."
@@ -461,23 +461,23 @@ if rc == 0:
 
     // Quick Respring
     func respring() {
-        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
+        guard !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop, isProcessing.isEmpty else { return }
         let pwd = self.rootPassword
         let cmd = "if command -v sbreload >/dev/null 2>&1; then sbreload; else killall -9 SpringBoard backboardd; fi"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
         DispatchQueue.global(qos: .userInitiated).async {
-            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput)
         }
     }
 
     // Userspace Reboot
     func userspaceReboot() {
-        guard !isDiagnosingDisk, !isChangingAirDrop else { return }
+        guard !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop, isProcessing.isEmpty else { return }
         let pwd = self.rootPassword
         let cmd = "launchctl reboot userspace"
         let elevated = buildElevatedCommand(rawCommand: cmd, pwd: pwd)
         DispatchQueue.global(qos: .userInitiated).async {
-            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments)
+            _ = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput)
         }
     }
 
@@ -524,7 +524,8 @@ if rc == 0:
     }
 
     func applyImportedConfig() {
-        guard !targetStates.isEmpty, disabledServices != nil, !isApplyingConfig, !isChangingAirDrop else { return }
+        guard !targetStates.isEmpty, disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk,
+              !isChangingAirDrop, !isRefreshingState, !isScanningDaemons, isProcessing.isEmpty else { return }
         var targetsToChange: [(service: LaunchdService, disable: Bool)] = []
         for service in allDaemons {
             if let targetDisable = targetStates[service.label] {
@@ -582,7 +583,7 @@ if rc == 0:
         let script = SpringBoardUIControl.script + "\nimport base64\nui_control(*json.loads(base64.b64decode('\(data.base64EncodedString())')))\n"
         let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
         DispatchQueue.global(qos: .utility).async {
-            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput, trackProcess: false)
             let line = result.output.split(separator: "\n").first { $0.hasPrefix("ui_state=") }
             let state = line.flatMap { try? JSONDecoder().decode(SpringBoardUIState.self, from: Data($0.dropFirst(9).utf8)) }
             DispatchQueue.main.async {
@@ -608,7 +609,7 @@ if rc == 0:
             "\nsys.exit(air_drop(*json.loads(base64.b64decode('\(data.base64EncodedString())'))))\n"
         let elevated = buildElevatedCommand(rawCommand: Self.shellQuote(pythonPath) + " -c " + Self.shellQuote(script), pwd: rootPassword)
         DispatchQueue.global(qos: .utility).async {
-            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, trackProcess: false)
+            let result = self.posixRunSync(executable: elevated.executable, args: elevated.arguments, standardInput: elevated.standardInput, trackProcess: false)
             let line = result.output.split(separator: "\n").first { $0.hasPrefix("airdrop_allowed=") }
             let value = line.flatMap { Int($0.dropFirst("airdrop_allowed=".count)) }
             DispatchQueue.main.async {
@@ -629,52 +630,12 @@ if rc == 0:
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private func buildElevatedCommand(rawCommand: String, pwd: String) -> (executable: String, arguments: [String]) {
-        let safePwd = pwd.replacingOccurrences(of: "\"", with: "\\\"")
-        let innerCmd = rawCommand.replacingOccurrences(of: "'", with: "'\\''")
-        
-        if FileManager.default.fileExists(atPath: sudoPath) {
-            let shellCmd = "echo \"\(safePwd)\" | \"\(sudoPath)\" -S -p \"\" \(rootlessShellPath) -c '\(innerCmd)'"
-            return (rootlessShellPath, ["-c", shellCmd])
-        } else {
-            let pythonExe = pythonPath
-            let pythonScript = """
-            import os, sys, pty, select
-            pw = sys.argv[1]
-            cmd = sys.argv[2:]
-            pid, fd = pty.fork()
-            if pid == 0:
-                os.execv(cmd[0], cmd)
-            else:
-                buf = b""
-                while True:
-                    r, _, _ = select.select([fd], [], [], 2.0)
-                    if not r: break
-                    try:
-                        c = os.read(fd, 1024)
-                        if not c: break
-                        buf += c
-                        if b"assword" in buf or b"Password:" in buf: break
-                    except OSError:
-                        break
-                os.write(fd, (pw + "\\n").encode())
-                try:
-                    while True:
-                        d = os.read(fd, 1024)
-                        if not d: break
-                        sys.stdout.buffer.write(d)
-                        sys.stdout.flush()
-                except OSError:
-                    pass
-                _, s = os.waitpid(pid, 0)
-                sys.exit((s >> 8) & 0xFF)
-            """
-            let suExe = "/var/jb/usr/bin/su"
-            let suArgs = ["-c", pythonScript, safePwd, suExe, "-", "root", "-c", innerCmd]
-            return (pythonExe, suArgs)
-        }
+    private func buildElevatedCommand(rawCommand: String, pwd: String) -> ElevatedCommand {
+        ElevatedCommand.build(command: rawCommand, password: pwd, shell: rootlessShellPath,
+                              sudo: sudoPath, python: pythonPath,
+                              hasSudo: FileManager.default.fileExists(atPath: sudoPath))
     }
-        
+
     private var pythonPath: String {
         let paths = ["/var/jb/usr/bin/python3", "/var/jb/usr/local/bin/python3", "/usr/bin/python3"]
         for p in paths { if FileManager.default.fileExists(atPath: p) { return p } }
@@ -772,7 +733,7 @@ if rc == 0:
         DispatchQueue.main.async { self.errorMessage = message }
     }
     
-    private func posixRunAsync(executable: String, args: [String], trackProcess: Bool = true, onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
+    private func posixRunAsync(executable: String, args: [String], standardInput: String? = nil, trackProcess: Bool = true, onOutput: @escaping (String) -> Void, onCompletion: @escaping (Int32) -> Void) {
         let argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) } + [nil]
         defer { for case let pointer? in argv { free(pointer) } }
         var envDict = ProcessInfo.processInfo.environment
@@ -785,7 +746,20 @@ if rc == 0:
         posix_spawn_file_actions_init(&fileActions)
         defer { posix_spawn_file_actions_destroy(&fileActions) }
         var outPipe: [Int32] = [-1, -1]
-        pipe(&outPipe)
+        guard pipe(&outPipe) == 0 else { onCompletion(-1); return }
+        var inputPipe: [Int32] = [-1, -1]
+        if standardInput != nil {
+            guard pipe(&inputPipe) == 0 else {
+                close(outPipe[0]); close(outPipe[1]); onCompletion(-1); return
+            }
+            fcntl(inputPipe[1], F_SETNOSIGPIPE, 1)
+            posix_spawn_file_actions_adddup2(&fileActions, inputPipe[0], STDIN_FILENO)
+            posix_spawn_file_actions_addclose(&fileActions, inputPipe[0])
+            posix_spawn_file_actions_addclose(&fileActions, inputPipe[1])
+        }
+        // Concurrent read-only helpers must not inherit another helper's pipe
+        // and keep its output or password input open after that helper exits.
+        for fd in outPipe + inputPipe where fd >= 0 { fcntl(fd, F_SETFD, FD_CLOEXEC) }
         posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDOUT_FILENO)
         posix_spawn_file_actions_adddup2(&fileActions, outPipe[1], STDERR_FILENO)
         posix_spawn_file_actions_addclose(&fileActions, outPipe[0])
@@ -800,10 +774,27 @@ if rc == 0:
         var pid: pid_t = 0
         let spawnStatus = posix_spawn(&pid, executable, &fileActions, &attr, argv, env)
         close(outPipe[1]) 
+        if inputPipe[0] >= 0 { close(inputPipe[0]) }
         if spawnStatus != 0 {
             close(outPipe[0])
+            if inputPipe[1] >= 0 { close(inputPipe[1]) }
             onCompletion(-1)
             return
+        }
+        if let standardInput {
+            let inputFD = inputPipe[1]
+            DispatchQueue.global().async {
+                defer { close(inputFD) }
+                Data(standardInput.utf8).withUnsafeBytes { bytes in
+                    var offset = 0
+                    while offset < bytes.count {
+                        let written = write(inputFD, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                        if written > 0 { offset += written }
+                        else if written < 0 && errno == EINTR { continue }
+                        else { break }
+                    }
+                }
+            }
         }
         if trackProcess { self.currentPid = pid }
         let fd = outPipe[0]
@@ -830,11 +821,11 @@ if rc == 0:
         source.resume()
     }
 
-    private func posixRunSync(executable: String, args: [String], trackProcess: Bool = true) -> (exitCode: Int32, output: String) {
+    private func posixRunSync(executable: String, args: [String], standardInput: String? = nil, trackProcess: Bool = true) -> (exitCode: Int32, output: String) {
         let semaphore = DispatchSemaphore(value: 0)
         var fullOutput = ""
         var finalCode: Int32 = -1
-        posixRunAsync(executable: executable, args: args, trackProcess: trackProcess) { text in fullOutput += text } onCompletion: { code in
+        posixRunAsync(executable: executable, args: args, standardInput: standardInput, trackProcess: trackProcess) { text in fullOutput += text } onCompletion: { code in
             finalCode = code
             semaphore.signal()
         }

@@ -1,12 +1,18 @@
 # Daemon Manager
 
+Current **v1.0.22** adds separate Bluetooth, Calls/SMS, Wi-Fi, Keyboard, Safari services, Location, and Siri/dictation groups. Essentials remain enabled by default; deliberate group Off can include their named Critical feature jobs while shared prerequisites remain protected. Existing tested groups retain their policies. New core-feature Off/restart/recovery cycles remain unverified; Safari service Off does not block the Safari/WebKit app processes.
+
+The [2026-10-13 audit](audit/2026-10-13.md) and [complete target inventory](audit/services-2026-10-13.csv) distinguish source findings, installed state, historical evidence and empirical limits. The isolated siriactionsd Off/userspace-restart test passed user basic-use checks without reproducing its old sustained CPU warning. It and ShortcutsUI now default Off; restore Shortcuts On when needed. Current targets: **512 entries, 315 Off / 197 On, 88 Critical enabled**. Actual messaging credential/attachment jobs and local Safari history/bookmarks default On. Installation does not apply defaults or override explicit custom choices. Dated sections below describe their historical revisions.
+
+Root commands now pass credentials through stdin and forward commands unchanged; stale-state and overlapping-operation handling were corrected. A finite, read-only iOS sampler is available at `tools/sample_resources.py` (Python 3.9+). Run on the phone as root, for example `python3 sample_resources.py --interval 10 --samples 3`; capture its JSON lines privately. CPU uses the runtime Mach timebase, footprint is per process, and `/usr/bin/vm_stat` subtracts speculative pages in its printed physical-free line. The app uses host_statistics64, whose free_count includes speculative pages. Do not mix those counters or sum process footprints as a RAM-saving estimate.
+
 SwiftUI service/preset manager for jailbroken iOS 16+, built with XcodeGen and installed with TrollStore Lite or AppSync Unified.
 
 Known service descriptions are visible directly in Services, Defaults and Overrides. Tap the name or chevron for warnings, launchd plist/executable paths and related file metadata where verified. Contacts-related services show the address-book database paths, sizes, and modification dates without reading contact records. Uncertain private roles are omitted. The independent switch edits the saved launchd override; restart userspace for full loaded-process changes.
 
 The tab bar has an opaque standard and scroll-edge appearance from initial launch. Search, the available-memory number (MiB, displayed without a unit or label), and the theme switch share one row. The filter is the second row; pinned category headings and the separate top memory bar are removed. Memory is kernel free memory including speculative pages, with each page counted once. Tap the number for the live memory sheet.
 
-`daemon.cfg` matches all **512 builtin targets: 318 off, 194 on**. `yes` = disabled override; `no` = enabled override; uppercase `NO` = critical, keep enabled. All entries remain manually configurable. Critical includes measured CPU, repeated crashes and core dependency failures; it does not mean every member causes a bootloop. The classifications reflect 2026-10-11/12 iPhone 8 Plus tests:
+`daemon.cfg` matches all **512 builtin targets: 315 off, 197 on**. `yes` = disabled override; `no` = enabled override; uppercase `NO` = critical, keep enabled. All entries remain manually configurable. Critical includes measured CPU, repeated crashes and core dependency failures; it does not mean every member causes a bootloop. The classifications reflect 2026-10-11/12 iPhone 8 Plus tests:
 
 - `searchd`: repeated Photos Spotlight retries and sustained CPU during broad live unloading; fresh boot and a short single-service comparison did not reproduce it, so causality remains unproven.
 - `biomed`: SpringBoard/keyboard Biome metadata and lockfile errors with the service off.

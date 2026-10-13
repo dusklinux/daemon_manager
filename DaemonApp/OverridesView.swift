@@ -66,7 +66,9 @@ private struct OverrideGroupView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(busy)
-                Text("On enables the listed feature services and prerequisites. Off preserves Critical services and prerequisite-only jobs. Shared jobs also affect other groups. Status shows saved overrides, not a completed feature test.")
+                Text(group.criticalOffLabels.isEmpty
+                     ? "On enables listed services and prerequisites. Off preserves Critical and prerequisite-only jobs. Shared jobs affect other groups. Status shows saved overrides, not a completed feature test."
+                     : "Off deliberately includes the essential feature services described above. Prerequisite-only jobs stay enabled. Shared jobs affect other groups. Status shows saved overrides, not a completed feature test.")
                     .font(.caption).foregroundColor(.secondary)
             }
             if group.controlsAirDrop {

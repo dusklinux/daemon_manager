@@ -13,10 +13,22 @@ struct FeatureGroupsTests {
         precondition(group.actionLabels(enable: true) == [critical, optional, dependency], "On must restore every listed dependency")
         for group in OverrideServices.groups {
             let off = Set(group.actionLabels(enable: false))
-            precondition(off.allSatisfy { !SafetyManager.isCritical($0) }, "Group Off included a Critical service: \(group.title)")
+            precondition(off.allSatisfy { !SafetyManager.isCritical($0) || group.criticalOffLabels.contains($0) }, "Group Off included an unlisted Critical service: \(group.title)")
+            precondition(group.criticalOffLabels.isSubset(of: Set(group.labels)), "An exception cannot disable a prerequisite-only job")
             precondition(Set(group.dependencies).subtracting(group.labels).isDisjoint(with: off), "Group Off included a shared prerequisite")
             precondition(Set(group.allLabels).count == group.allLabels.count)
         }
+        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation"] {
+            let feature = OverrideServices.groups.first { $0.title == title }!
+            precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
+            precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
+            precondition(!feature.actionLabels(enable: false).contains("com.apple.powerd"))
+            precondition(!feature.actionLabels(enable: false).contains("com.apple.pluginkit.pkd"))
+        }
+        let siri = OverrideServices.groups.first { $0.title == "Siri and dictation" }!
+        precondition(!siri.actionLabels(enable: false).contains("com.apple.searchd"), "Spotlight is not a Siri-only dependency")
+        precondition(DefaultPresets.builtinDefaults["com.apple.siriactionsd"] == true)
+        precondition(!SafetyManager.isCritical("com.apple.siriactionsd"))
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!
         let usb = OverrideServices.groups.first { $0.title == "USB and wired accessories" }!
         precondition(Set(usb.actionLabels(enable: true)) == Set(usb.labels + ["com.apple.mobile.lockdown", "com.openssh.sshd"]), "USB On must restore host jobs and shared prerequisites")

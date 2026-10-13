@@ -28,6 +28,8 @@ jobs:
           /tmp/daemon-memory-tests
           swiftc DaemonApp/DefaultPresets.swift DaemonApp/OverrideServices.swift tests/FeatureGroupsTests.swift -o /tmp/daemon-group-tests
           /tmp/daemon-group-tests
+          swiftc DaemonApp/ElevatedCommand.swift tests/ElevatedCommandTests.swift -o /tmp/daemon-elevation-tests
+          /tmp/daemon-elevation-tests
           swiftc -O DaemonApp/MemoryStatistics.swift DaemonApp/MemoryStress.swift tests/MemoryStressTests.swift -o /tmp/daemon-stress-tests
           /tmp/daemon-stress-tests
 
@@ -78,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.21
+          tag_name: v1.0.22
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.21"
-          body: "Add a USB and wired accessories feature group with menu and subpage On/Off. Off preserves Critical pairing and OpenSSH prerequisites; no single-service explanation is claimed for the earlier USB recovery. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.22"
+          body: "Add Bluetooth, calls/SMS, Wi-Fi, keyboard, Safari services, location and Siri groups. Retain established group policies and core defaults; document the isolated Siri-off test and limits. Fix stale-state/concurrent-operation handling and root command forwarding. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
