@@ -18,6 +18,11 @@ struct FeatureGroupsTests {
             precondition(Set(group.allLabels).count == group.allLabels.count)
         }
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!
+        let usb = OverrideServices.groups.first { $0.title == "USB and wired accessories" }!
+        precondition(Set(usb.actionLabels(enable: true)) == Set(usb.labels + ["com.apple.mobile.lockdown", "com.openssh.sshd"]), "USB On must restore host jobs and shared prerequisites")
+        precondition(Set(usb.actionLabels(enable: false)) == Set(usb.labels), "USB Off must retain every optional host job as a toggle")
+        precondition(!usb.actionLabels(enable: false).contains("com.apple.mobile.lockdown"))
+        precondition(!usb.actionLabels(enable: false).contains("com.openssh.sshd"), "USB Off must preserve remote access")
         let media = OverrideServices.groups.first { $0.title == "Lock Screen media controls" }!
         precondition(Set(media.actionLabels(enable: true)) == ["com.apple.PosterBoard", "com.apple.liveactivitiesd"])
         precondition(Set(media.actionLabels(enable: false)) == Set(media.actionLabels(enable: true)), "Optional media group must support complete Off")
