@@ -4,6 +4,11 @@ import Foundation
 struct FeatureGroupsTests {
     static func main() {
         precondition(DaemonDescriptions.get(for: "com.apple.FileProvider") != nil)
+        for label in ["com.apple.mDNSResponder.reloaded", "com.apple.mDNSResponderHelper.reloaded"] {
+            precondition(SafetyManager.isCritical(label), "Actual DNS job labels must retain the legacy Critical policy")
+            precondition(SafetyManager.warning(for: label) != nil)
+            precondition(DefaultPresets.builtinDefaults[label] == false)
+        }
         let critical = "com.apple.appleaccountd"
         let optional = "com.apple.cloudd"
         let dependency = "com.apple.accountsd"

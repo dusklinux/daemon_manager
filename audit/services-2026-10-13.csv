@@ -290,9 +290,9 @@ com.apple.lsd,On,True,/System/Library/LaunchDaemons/com.apple.lsd.plist,None,Tru
 com.apple.lsd.system,On,True,/System/Library/LaunchDaemons/com.apple.lsd.system.plist,None,False,,,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.lskdd,On,True,/System/Library/LaunchDaemons/com.apple.lskdd.plist,None,True,,,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.mDNSResponder,On,True,,,,,,No exact installed Label; absent or filename/legacy alias
-com.apple.mDNSResponder.reloaded,On,False,/System/Library/LaunchDaemons/com.apple.mDNSResponder.plist,None,True,3244,3.141,Installed/state/footprint inspected; functionality not exhaustively tested
+com.apple.mDNSResponder.reloaded,On,True,/System/Library/LaunchDaemons/com.apple.mDNSResponder.plist,None,True,3244,3.141,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.mDNSResponderHelper,On,True,,,,,,No exact installed Label; absent or filename/legacy alias
-com.apple.mDNSResponderHelper.reloaded,On,False,/System/Library/LaunchDaemons/com.apple.mDNSResponderHelper.plist,None,True,,,Installed/state/footprint inspected; functionality not exhaustively tested
+com.apple.mDNSResponderHelper.reloaded,On,True,/System/Library/LaunchDaemons/com.apple.mDNSResponderHelper.plist,None,True,,,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.managedconfiguration.passcodenagd,Off,False,/System/Library/LaunchDaemons/com.apple.managedconfiguration.passcodenagd.plist,True,False,,,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.managedconfiguration.profiled,Off,False,/System/Library/LaunchDaemons/com.apple.managedconfiguration.profiled.plist,True,False,,,Installed/state/footprint inspected; functionality not exhaustively tested
 com.apple.maps.destinationd,Off,False,/System/Library/LaunchDaemons/com.apple.maps.destinationd.plist,True,False,,,Installed/state/footprint inspected; functionality not exhaustively tested

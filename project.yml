@@ -17,8 +17,8 @@ targets:
       path: DaemonApp/Info.plist
       properties:
         CFBundleDisplayName: "Daemon Manager"
-        CFBundleShortVersionString: "1.0.24"
-        CFBundleVersion: "25"
+        CFBundleShortVersionString: "1.0.25"
+        CFBundleVersion: "26"
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

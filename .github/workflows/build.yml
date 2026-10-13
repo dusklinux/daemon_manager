@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.24
+          tag_name: v1.0.25
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.24"
-          body: "Add a separate Spotlight and search group, including deliberate searchd Off. Keep searchd default On and document the reproduced delayed Photos CPU loop with it Off. Preserve shared dependencies and existing builtin targets. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.25"
+          body: "Apply existing Critical DNS policy to the actual installed .reloaded labels. Clarify logging and remaining candidate roles from native evidence; retain enabled logging defaults and all builtin target states. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
