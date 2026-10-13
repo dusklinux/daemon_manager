@@ -1,6 +1,8 @@
 # Daemon Manager
 
-Current **v1.0.25** retains a separate **Spotlight and search** group alongside Bluetooth, Calls/SMS, Wi-Fi, Keyboard, Safari services, Location, and Siri/dictation. Spotlight Off deliberately includes searchd, which also serves Photos/app-index queries; the search interface and app-local results can remain available. searchd stays builtin On: its isolated Off/restart test later reproduced a Photos background CPU loop at about 106% of one core, despite initially normal basic use. Essentials remain enabled by default; deliberate group Off can include their named Critical feature jobs while shared prerequisites remain protected. Existing tested groups retain their policies. New core-feature Off/restart/recovery cycles remain unverified; Safari service Off does not block the Safari/WebKit app processes.
+Current **v1.0.26** retains a separate **Spotlight and search** group alongside Bluetooth, Calls/SMS, Wi-Fi, Keyboard, Safari services, Location, and Siri/dictation. Spotlight Off deliberately includes searchd, which also serves Photos/app-index queries; the search interface and app-local results can remain available. searchd stays builtin On: its isolated Off/restart test later reproduced a Photos background CPU loop at about 106% of one core, despite initially normal basic use. Essentials remain enabled by default; deliberate group Off can include their named Critical feature jobs while shared prerequisites remain protected. Existing tested groups retain their policies. New core-feature Off/restart/recovery cycles remain unverified; Safari service Off does not block the Safari/WebKit app processes.
+
+The **Groups** tab (page title **Feature Groups**) replaces the old Overrides name. **Core logging** controls logd and its helper; **Analytics and diagnostics** controls optional collectors and preserves core logging during Off. Defaults remain unchanged. Complete logger-Off and full collector-group round trips remain unverified; adding a control is not a safe-disabling claim.
 
 The [logging follow-up](audit/2026-10-13-logging.md) measures the small core-logging cost and records the scoped helper-Off test. Actual `.reloaded` DNS labels now share the legacy Critical classification; their On defaults are unchanged. No additional service is declared universally safe Off.
 
@@ -28,7 +30,7 @@ Pkd, nehelper (including its filename alias), searchd, biomed, syncdefaultsd and
 
 Custom target choices are stored separately from builtins. Legacy full-copy preferences migrate values differing from the old builtins as custom choices; inherited values adopt revised defaults. The old format cannot distinguish a deliberate choice equal to an inherited value.
 
-General service batches save and verify native launchctl overrides, preserve root:wheel `0644` metadata and report failures; restart userspace for complete process changes. Single switches for the tested Overrides catalog also load/unload the selected feature job and verify its loaded state immediately. No polling worker or blanket dependency unloading is added.
+General service batches save and verify native launchctl overrides, preserve root:wheel `0644` metadata and report failures; restart userspace for complete process changes. Single switches for the tested feature-host catalog also load/unload the selected feature job and verify its loaded state immediately. No polling worker or blanket dependency unloading is added.
 
 ## Build
 

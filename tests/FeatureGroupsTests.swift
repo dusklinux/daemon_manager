@@ -10,6 +10,19 @@ struct FeatureGroupsTests {
             precondition(DefaultPresets.builtinDefaults[label] == false)
         }
         let critical = "com.apple.appleaccountd"
+        let logging = OverrideServices.groups.first { $0.title == "Core logging" }!
+        let diagnostics = OverrideServices.groups.first { $0.title == "Analytics and diagnostics" }!
+        precondition(Set(logging.actionLabels(enable: false)) == ["com.apple.logd", "com.apple.logd_helper"])
+        precondition(Set(diagnostics.dependencies) == Set(logging.labels))
+        precondition(Set(diagnostics.actionLabels(enable: false)).isDisjoint(with: Set(logging.labels)), "Collector Off must preserve core logging")
+        precondition(Set(diagnostics.actionLabels(enable: true)).isSuperset(of: Set(logging.labels)))
+        for label in diagnostics.labels {
+            precondition(DefaultPresets.builtinDefaults[label] == true, "Collectors retain their existing Off defaults")
+        }
+        for label in logging.labels {
+            precondition(DefaultPresets.builtinDefaults[label] == false, "Core logging retains its existing On defaults")
+            precondition(!OverrideServices.labels.contains(label), "Untested logger jobs must not hot-unload")
+        }
         let optional = "com.apple.cloudd"
         let dependency = "com.apple.accountsd"
         let group = OverrideGroup(title: "Fixture", labels: [critical, optional, optional], dependencies: [dependency, optional])

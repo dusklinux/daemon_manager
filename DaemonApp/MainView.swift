@@ -64,13 +64,13 @@ struct MainView: View {
                         .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
                         .toolbarBackground(.visible, for: .tabBar)
 
-                    // TAB 3: Tested optional feature overrides
-                    OverridesView(onSafetyPrompt: { service, enable in
+                    // TAB 3: Feature groups and their shared prerequisites
+                    FeatureGroupsView(onSafetyPrompt: { service, enable in
                         pendingToggleService = service
                         pendingToggleAction = enable
                         showSafetyAlert = true
                     })
-                        .tabItem { Label("Overrides", systemImage: "switch.2") }
+                        .tabItem { Label("Groups", systemImage: "switch.2") }
                         .tag(2)
                         .toolbarBackground(Color(UIColor.secondarySystemBackground), for: .tabBar)
                         .toolbarBackground(.visible, for: .tabBar)

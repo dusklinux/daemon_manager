@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct OverridesView: View {
+struct FeatureGroupsView: View {
     @EnvironmentObject var model: AppModel
     let onSafetyPrompt: (LaunchdService, Bool) -> Void
 
@@ -17,11 +17,11 @@ struct OverridesView: View {
                 ForEach(OverrideServices.groups) { group in
                     HStack(spacing: 8) {
                         NavigationLink {
-                            OverrideGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
+                            FeatureGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(group.title)
-                                Text(overrideGroupState(group, model: model))
+                                Text(featureGroupState(group, model: model))
                                     .font(.caption).foregroundColor(.secondary)
                             }
                         }
@@ -36,13 +36,13 @@ struct OverridesView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Overrides")
+            .navigationTitle("Feature Groups")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
 
-private struct OverrideGroupView: View {
+private struct FeatureGroupView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var presets = DefaultPresets.shared
     let group: OverrideGroup
@@ -58,7 +58,7 @@ private struct OverrideGroupView: View {
             Section {
                 Text(group.note).font(.caption).foregroundColor(.secondary)
                 HStack {
-                    Text(overrideGroupState(group, model: model)).font(.caption).foregroundColor(.secondary)
+                    Text(featureGroupState(group, model: model)).font(.caption).foregroundColor(.secondary)
                     Spacer()
                     Button("On") { model.applyFeatureGroup(group, enable: true) }
                     Button("Off") { model.applyFeatureGroup(group, enable: false) }
@@ -113,7 +113,7 @@ private struct OverrideGroupView: View {
     }
 }
 
-private func overrideGroupState(_ group: OverrideGroup, model: AppModel) -> String {
+private func featureGroupState(_ group: OverrideGroup, model: AppModel) -> String {
     let services = model.allDaemons.filter { group.allLabels.contains($0.label) }
     if Set(services.map(\.label)).count != group.allLabels.count { return "Some services not found" }
     let states = services.compactMap { model.isDisabled($0) }
