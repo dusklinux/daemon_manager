@@ -18,7 +18,7 @@ struct FeatureGroupsTests {
             precondition(Set(group.dependencies).subtracting(group.labels).isDisjoint(with: off), "Group Off included a shared prerequisite")
             precondition(Set(group.allLabels).count == group.allLabels.count)
         }
-        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation"] {
+        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation", "Spotlight and search"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
             precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
@@ -29,6 +29,10 @@ struct FeatureGroupsTests {
         precondition(!siri.actionLabels(enable: false).contains("com.apple.searchd"), "Spotlight is not a Siri-only dependency")
         precondition(DefaultPresets.builtinDefaults["com.apple.siriactionsd"] == true)
         precondition(!SafetyManager.isCritical("com.apple.siriactionsd"))
+        let search = OverrideServices.groups.first { $0.title == "Spotlight and search" }!
+        precondition(search.actionLabels(enable: false).contains("com.apple.searchd"))
+        precondition(Set(search.labels).isDisjoint(with: Set(siri.labels)))
+        precondition(DefaultPresets.builtinDefaults["com.apple.searchd"] == false, "Preserve the Photos dependency default until verified")
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!
         let usb = OverrideServices.groups.first { $0.title == "USB and wired accessories" }!
         precondition(Set(usb.actionLabels(enable: true)) == Set(usb.labels + ["com.apple.mobile.lockdown", "com.openssh.sshd"]), "USB On must restore host jobs and shared prerequisites")
