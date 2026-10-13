@@ -219,3 +219,42 @@ Dock and status-bar switches and their layout hooks were removed at the user’s
 
 
 The installed v1.0.20/build 21 app passed All On → respring → both interfaces available, followed by Off → respring → both inaccessible, confirmed by the user. Dock/status bar were restored and their switches removed. Final saved settings and current-PID runtime report both have Control Center/App Library disabled. CI run 38244546744 passed 23 Python tests, Swift memory/stress/group checks and iOS build/package. Source ca663064295eb14b72a669ececcfcf37eeda7277; IPA SHA256 35e71d9caee42bc50b7e251d69633b10420ebf44ca925c2fbb101d33c6d4bdca matched the release digest and embedded source/version; TrollStore returned 0 and the app process was observed running. Both saved launchd domains matched the pre-interface profile exactly. A settled 10-second sample measured SpringBoard at 0.010 CPU seconds (0.10% of one core), footprint 64.13 MB. That is not a comparative RAM/battery benchmark or exhaustive stress proof.
+
+
+## USB and wired accessories (v1.0.21)
+
+Overrides adds a menu/subpage group for AFC file access, app-container file sharing, host notification proxies, accessory/iAP protocols and USB network-interface setup. On restores nine optional jobs and shared Critical lockdownd/OpenSSH prerequisites; Off preserves the latter two. Defaults and daemon.cfg remain unchanged. Restart userspace after group changes. The grouped jobs are related host features, not a claim that every one is needed for USB SSH. Backup/restore, wired audio and every accessory protocol are not fully tested.
+
+On 2026-10-13, the computer initially saw no Apple USB device, and the phone did not charge from the computer. Rebuilding the previous USB daemon did not restore detection. The user reset native overrides and restarted userspace; USB enumeration and authenticated SSH then worked. Lockdownd was already running before the reset. The reset's complete disabled.backup contains 344 entries; the reset/restart changed many jobs at once, so it does not isolate a single failing service. A subsequent comparison disabled all nine optional group jobs, restarted userspace and still passed USB SSH plus paired ProductType/ProductVersion queries, with all nine jobs unloaded and lockdownd/OpenSSH loaded.
+
+### Original Linux USB tunnel commands
+
+The original host daemon could not load libplist-2.0.so.4 while the installed libplist provided .12. These recorded commands rebuilt upstream revision 3ded00c9985a5108cfc7591a309f9a23d57a8cba against the installed libraries, without installing over the packaged daemon:
+
+```sh
+git clone --depth 1 https://github.com/libimobiledevice/usbmuxd.git /mnt/zram1/daemon-manager-usbmuxd-src
+cd /mnt/zram1/daemon-manager-usbmuxd-src
+./autogen.sh --without-preflight --without-systemd
+make -j4
+sudo ./src/usbmuxd -f -v -U usbmux
+```
+
+Leave the foreground daemon running. In another terminal the original port-forward command was:
+
+```sh
+iproxy 2222:22
+```
+
+The original authenticated SSH command was:
+
+```sh
+ssh -p 2222 -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+  -o ControlMaster=yes -o ControlPath=/mnt/zram1/daemon-manager-usb-ssh.sock \
+  -o ControlPersist=600 root@127.0.0.1
+```
+
+Passwords are entered at prompts. The temporary directory disappears when zram storage is recreated. On the 2026-10-13 replay, the packaged daemon was already running, so it was stopped with `sudo systemctl stop usbmuxd.service` before starting the foreground build. The existing `iproxy -s 127.0.0.1 2222:22` was reused. The rebuilt daemon initially reported 0 devices and SSH reset; after the user's reset/restart, authenticated USB SSH succeeded. These host commands cannot restore a phone that never enumerates on the USB bus.
+
+Installed-menu validation completed: On → userspace restart loaded all nine jobs, preserved lockdownd/OpenSSH and passed authenticated USB SSH, paired ProductType queries and BatteryIsCharging=true. Menu Off → restart then unloaded all nine, with the same SSH/paired queries and charging still working. The user also confirmed charging in the Off state. Final system and user/501 maps differ from the post-reset baseline only by those nine optional Off entries. Other reset-era service choices were left unchanged. Group Off is the final tested state; builtin targets/config were not changed. These checks do not test every accessory or backup protocol and do not identify the original missing-enumeration cause.
+
+Deployment: v1.0.21/build 22, source 7e00c5a03d7b22955a952cde7343bad7b92d3c4f, Actions 38381048707 passed 23 Python checks, Swift feature/memory/stress checks and iOS compilation/packaging. IPA SHA256 abb7db08b10703d0b7e4e5d96f897507152ece02b579b3615095b5fbaaac345b matched release digest and embedded source/version. TrollStore returned 0, installed version/source matched, and installed group menu actions were verified through saved and loaded job states after restarts.
