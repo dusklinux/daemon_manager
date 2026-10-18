@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.27
+          tag_name: v1.0.28
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.27"
-          body: "Separate Critical stability dependencies from Recommended On functionality. Preserve every builtin On/Off target. Group Off now preserves all Critical services, including the reproduced searchd CPU-loop dependency. Record restored-phone evidence and bounded individual helper tests. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.28"
+          body: "Keep Critical services in their dedicated tab and descriptions. Feature Groups hide Critical prerequisites from service rows and status summaries while On still restores required prerequisites. Preserve stability classifications, every builtin On/Off target and existing service settings. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

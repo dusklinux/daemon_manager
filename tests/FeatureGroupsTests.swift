@@ -33,11 +33,15 @@ struct FeatureGroupsTests {
         precondition(group.allLabels == [critical, optional, dependency], "Shared labels must be applied once")
         precondition(Set(group.actionLabels(enable: false)) == [optional], "Off must preserve Critical and shared dependencies")
         precondition(group.actionLabels(enable: true) == [critical, optional, dependency], "On must restore every listed dependency")
+        precondition(group.visibleLabels == [optional, dependency], "Critical services must not appear among a group's visible services")
         for group in OverrideServices.groups {
             let off = Set(group.actionLabels(enable: false))
             precondition(off.allSatisfy { !SafetyManager.isCritical($0) }, "Group Off included a Critical service: \(group.title)")
             precondition(Set(group.dependencies).subtracting(group.labels).isDisjoint(with: off), "Group Off included a shared prerequisite")
             precondition(Set(group.allLabels).count == group.allLabels.count)
+            precondition(group.visibleLabels.allSatisfy { !SafetyManager.isCritical($0) }, "Groups must not display Critical services")
+            precondition(group.labels.allSatisfy { !SafetyManager.isCritical($0) }, "Critical jobs belong only to prerequisite policy, not grouped feature membership")
+            precondition(Set(group.visibleLabels).count == group.visibleLabels.count)
         }
         for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
@@ -52,7 +56,11 @@ struct FeatureGroupsTests {
         precondition(!SafetyManager.isCritical("com.apple.siriactionsd"))
         let search = OverrideServices.groups.first { $0.title == "Spotlight and search" }!
         precondition(!search.actionLabels(enable: false).contains("com.apple.searchd"), "A known CPU-loop dependency must survive group Off")
-        precondition(search.actionLabels(enable: false).count == search.labels.count - 1)
+        precondition(!search.visibleLabels.contains("com.apple.searchd"))
+        precondition(!search.labels.contains("com.apple.searchd"))
+        precondition(search.dependencies.contains("com.apple.searchd"))
+        precondition(search.actionLabels(enable: true).contains("com.apple.searchd"))
+        precondition(Set(search.actionLabels(enable: false)) == Set(search.labels))
         precondition(Set(search.labels).isDisjoint(with: Set(siri.labels)))
         precondition(DefaultPresets.builtinDefaults["com.apple.searchd"] == false, "Preserve the Photos dependency default until verified")
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!

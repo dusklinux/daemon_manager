@@ -66,7 +66,7 @@ private struct FeatureGroupView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(busy)
-                Text("On enables listed services and prerequisites. Off preserves Critical and prerequisite-only jobs. Recommended On services remain switchable; disabling them can remove functionality used by other groups. Status shows saved overrides, not a completed feature test.")
+                Text("On enables listed services and prerequisites. Critical services are managed in the Critical tab. Off preserves prerequisite-only jobs. Recommended On services remain switchable; disabling them can remove functionality used by other groups. Status shows the listed service settings, not a completed feature test.")
                     .font(.caption).foregroundColor(.secondary)
             }
             if group.controlsAirDrop {
@@ -84,7 +84,7 @@ private struct FeatureGroupView: View {
                 }
             }
             Section("Services") {
-                ForEach(group.allLabels, id: \.self) { label in
+                ForEach(group.visibleLabels, id: \.self) { label in
                     if let service = model.allDaemons.first(where: { $0.label == label }) {
                         LiveServiceRow(service: service, targetDisabled: presets.targetState(for: label)) {
                             if !$0 && SafetyManager.requiresWarning(service.label) { onSafetyPrompt(service, $0) }
@@ -112,8 +112,9 @@ private struct FeatureGroupView: View {
 }
 
 private func featureGroupState(_ group: OverrideGroup, model: AppModel) -> String {
-    let services = model.allDaemons.filter { group.allLabels.contains($0.label) }
-    if Set(services.map(\.label)).count != group.allLabels.count { return "Some services not found" }
+    let labels = Set(group.visibleLabels)
+    let services = model.allDaemons.filter { labels.contains($0.label) }
+    if Set(services.map(\.label)).count != labels.count { return "Some services not found" }
     let states = services.compactMap { model.isDisabled($0) }
     guard !states.isEmpty, states.count == services.count else { return "State unavailable" }
     if group.controlsAirDrop, model.airDropAllowed == nil { return "AirDrop state unavailable" }

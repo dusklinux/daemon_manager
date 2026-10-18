@@ -1,6 +1,8 @@
 # Daemon Manager
 
-## v1.0.27 — stability classifications, 2026-10-18
+## v1.0.28 — Critical services stay separate, 2026-10-18
+
+Critical services appear in their dedicated **Critical** tab with their service descriptions. Feature Groups exclude them from service rows and saved-state summaries. Group On still restores required core prerequisites; Group Off preserves them. searchd is a prerequisite of the optional search helpers, with its role and reproduced CPU failure described in Critical.
 
 This working copy now distinguishes **Critical** stability/core infrastructure from **Recommended On** functionality and unresolved dependencies. Thirty-four preset entries move from `NO` to `no`, including Apple Account, SMS/telephony, Bluetooth profiles, keyboard, Photos/export, PassKit and cloud-key helpers. Their normal defaults remain On. SSH also moves to Recommended On; it is outside the 512 builtin targets. A recommendation is not a verified-safe Off result. Existing failure descriptions remain available, and historical core/bootloop/CPU/crash protections remain Critical. All **512 Boolean targets are unchanged: 315 Off / 197 On**, now **56 Critical / 141 other On** entries.
 
@@ -8,7 +10,7 @@ Feature group Off always preserves Critical and prerequisite-only jobs. The old 
 
 The connected phone was freshly restored after a bootloop. Its supplied recovery files contain 46 additional disabled services versus the older saved profile, and four SpringBoard 190-second watchdog failures. They do not isolate one responsible service; the recovery record says enabling/removing the override file did not recover that installation. Do not replay that failure map or treat it as a safe preset. Today's report and complete classification comparison are in [the follow-up](audit/2026-10-18.md).
 
-The supplied **v1.0.26/build 27 IPA** was installed with TrollStore Lite and its embedded metadata verified. Installation did not apply defaults. It has the old compiled classifications and group exceptions. The user then authorized committing/pushing this app revision for a **v1.0.27/build 28 GitHub Actions build**. Local Python checks pass; native Swift/iOS and changed-control device verification are recorded in the follow-up as they complete. The versioned notes below describe earlier builds and are superseded by this review where they differ.
+**v1.0.27/build 28** was built and released by [GitHub Actions 39101400416](https://github.com/dusklinux/daemon_manager/actions/runs/39101400416): all 27 Python tests, native Swift policy/elevation/memory checks, iOS compilation and packaging passed. Release/local/phone SHA256 and embedded source d3dd91a8884613f6d011f7adcbb48d762e5b86cb matched. TrollStore Lite installation returned 0; installed metadata matched, and the saved daemon map and app preferences were unchanged. Device screen verification is tracked in the follow-up. The versioned notes below describe earlier builds and are superseded by this review where they differ.
 
 Current **v1.0.26** renames the feature-control tab to **Groups**, with page title **Feature Groups**, and adds **Core logging** plus **Analytics and diagnostics**. Collector Off preserves core logging. Existing targets, Critical policies and service settings are unchanged by installation.
 
