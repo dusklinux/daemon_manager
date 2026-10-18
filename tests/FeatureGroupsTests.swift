@@ -9,7 +9,11 @@ struct FeatureGroupsTests {
             precondition(SafetyManager.warning(for: label) != nil)
             precondition(DefaultPresets.builtinDefaults[label] == false)
         }
-        let critical = "com.apple.appleaccountd"
+        let critical = "com.apple.searchd"
+        precondition(!SafetyManager.isCritical("com.apple.appleaccountd"))
+        precondition(SafetyManager.recommendation(for: "com.apple.appleaccountd") != nil)
+        precondition(SafetyManager.recommendation(for: "appleaccountd") != nil)
+        precondition(!SafetyManager.requiresWarning("com.apple.appleaccountd"))
         let logging = OverrideServices.groups.first { $0.title == "Core logging" }!
         let diagnostics = OverrideServices.groups.first { $0.title == "Analytics and diagnostics" }!
         precondition(Set(logging.actionLabels(enable: false)) == ["com.apple.logd", "com.apple.logd_helper"])
@@ -31,12 +35,11 @@ struct FeatureGroupsTests {
         precondition(group.actionLabels(enable: true) == [critical, optional, dependency], "On must restore every listed dependency")
         for group in OverrideServices.groups {
             let off = Set(group.actionLabels(enable: false))
-            precondition(off.allSatisfy { !SafetyManager.isCritical($0) || group.criticalOffLabels.contains($0) }, "Group Off included an unlisted Critical service: \(group.title)")
-            precondition(group.criticalOffLabels.isSubset(of: Set(group.labels)), "An exception cannot disable a prerequisite-only job")
+            precondition(off.allSatisfy { !SafetyManager.isCritical($0) }, "Group Off included a Critical service: \(group.title)")
             precondition(Set(group.dependencies).subtracting(group.labels).isDisjoint(with: off), "Group Off included a shared prerequisite")
             precondition(Set(group.allLabels).count == group.allLabels.count)
         }
-        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation", "Spotlight and search"] {
+        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
             precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
@@ -48,7 +51,8 @@ struct FeatureGroupsTests {
         precondition(DefaultPresets.builtinDefaults["com.apple.siriactionsd"] == true)
         precondition(!SafetyManager.isCritical("com.apple.siriactionsd"))
         let search = OverrideServices.groups.first { $0.title == "Spotlight and search" }!
-        precondition(search.actionLabels(enable: false).contains("com.apple.searchd"))
+        precondition(!search.actionLabels(enable: false).contains("com.apple.searchd"), "A known CPU-loop dependency must survive group Off")
+        precondition(search.actionLabels(enable: false).count == search.labels.count - 1)
         precondition(Set(search.labels).isDisjoint(with: Set(siri.labels)))
         precondition(DefaultPresets.builtinDefaults["com.apple.searchd"] == false, "Preserve the Photos dependency default until verified")
         let recording = OverrideServices.groups.first { $0.title == "Screen recording" }!
@@ -66,20 +70,20 @@ struct FeatureGroupsTests {
         precondition(OverrideServices.groups.filter(\.controlsAirDrop).count == 1)
         precondition(OverrideServices.groups.first { $0.controlsAirDrop }!.actionLabels(enable: false) == ["com.apple.sharing.airdropui"])
         let messages = OverrideServices.groups.first { $0.title == "Messages and FaceTime" }!
-        precondition(!messages.actionLabels(enable: false).contains("com.apple.imagent"), "Group Off must preserve the tested SMS dependency")
-        precondition(!messages.actionLabels(enable: false).contains("com.apple.identityservicesd"))
+        precondition(messages.actionLabels(enable: false).contains("com.apple.imagent"), "An explicit messaging opt-out must stop its SMS broker")
+        precondition(messages.actionLabels(enable: false).contains("com.apple.identityservicesd"))
         let account = OverrideServices.groups.first { $0.title == "Apple Account and settings sync" }!
         for label in ["com.apple.absd", "com.apple.cdpd", "com.apple.followupd", "com.apple.identityservicesd", "com.apple.imagent", "com.apple.akd", "com.apple.adid", "com.apple.appleaccountd"] {
             precondition(account.actionLabels(enable: true).contains(label), "Account On omitted a tested prerequisite")
-            precondition(!account.actionLabels(enable: false).contains(label), "Account Off disabled a protected prerequisite")
+            precondition(account.actionLabels(enable: false).contains(label) == (label == "com.apple.appleaccountd"), "Account Off must stop its feature jobs and preserve prerequisite-only jobs")
         }
         let photos = OverrideServices.groups.first { $0.title == "Photos sharing and export" }!
         precondition(photos.actionLabels(enable: true).contains("com.apple.photos.ImageConversionService"))
-        precondition(!photos.actionLabels(enable: false).contains("com.apple.photos.ImageConversionService"))
+        precondition(photos.actionLabels(enable: false).contains("com.apple.photos.ImageConversionService"))
         precondition(photos.actionLabels(enable: true).contains("com.apple.photos.VideoConversionService"))
-        precondition(photos.actionLabels(enable: false).isEmpty, "Group Off must preserve both tested conversion dependencies")
+        precondition(Set(photos.actionLabels(enable: false)) == Set(photos.labels), "Export opt-out must stop both conversion jobs")
         let wallet = OverrideServices.groups.first { $0.title == "Wallet" }!
-        precondition(wallet.actionLabels(enable: false) == ["com.apple.PassbookUISceneService"])
+        precondition(Set(wallet.actionLabels(enable: false)) == Set(wallet.labels), "Wallet opt-out also stops its shared PassKit backend")
         let store = OverrideServices.groups.first { $0.title == "App Store and media purchases" }!
         precondition(store.actionLabels(enable: true).contains("com.apple.passd"))
         precondition(!store.actionLabels(enable: false).contains("com.apple.passd"))

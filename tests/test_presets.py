@@ -8,9 +8,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class PresetTests(unittest.TestCase):
     def test_description_dictionary_has_no_duplicate_keys(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
-        descriptions = source.split('static let dict: [String: String] = [', 1)[1].split('\n    ]', 1)[0]
-        keys = re.findall(r'^        "([^\"]+)":', descriptions, re.M)
-        self.assertEqual(len(keys), len(set(keys)), 'Duplicate descriptions crash Swift dictionary initialization')
+        for name in ('dict', 'criticalServices', 'recommendedEnabled'):
+            block = source.split(f'static let {name}: [String: String] = [', 1)[1].split('\n    ]', 1)[0]
+            keys = re.findall(r'^        "([^\"]+)":', block, re.M)
+            self.assertEqual(len(keys), len(set(keys)), f'Duplicate {name} keys crash Swift dictionary initialization')
 
     def test_config_matches_builtin_targets(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
@@ -35,6 +36,8 @@ class PresetTests(unittest.TestCase):
         for label in labels:
             if label in builtin:
                 self.assertEqual(raw_actions[label], 'NO')
+        self.assertEqual({label for label, action in raw_actions.items() if action == 'NO'},
+                         set(labels) & set(builtin), 'Config and Critical UI must agree in both directions')
         for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
                       'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
             self.assertIs(builtin['com.apple.' + label], False)
@@ -49,8 +52,26 @@ class PresetTests(unittest.TestCase):
         recommended = labels('recommendedEnabled', 'String')
         critical = labels('criticalServices', 'String')
         self.assertFalse(recommended & critical)
-        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'biomed', 'syncdefaultsd', 'searchd', 'mobile.lockdown', 'absd', 'imagent', 'identityservicesd', 'cdpd', 'followupd', 'photos.ImageConversionService', 'photos.VideoConversionService', 'passd', 'protectedcloudstorage.protectedcloudkeysyncing', 'SecureBackupDaemon', 'contextstored'):
+        for label in ('pluginkit.pkd', 'nehelper', 'nehelper-embedded', 'searchd',
+                      'mobile.usermanagerd', 'nanoregistryd', 'sleepd',
+                      'rapportd', 'nesessionmanager', 'SpringBoard', 'backboardd'):
             self.assertIn('com.apple.' + label, critical)
+        builtin_block = source.split('static let builtinDefaults: [String: Bool] = [', 1)[1].split('\n    ]', 1)[0]
+        builtin = dict(re.findall(r'"([^\"]+)": (true|false)', builtin_block))
+        for label in ('biomed', 'syncdefaultsd', 'mobile.lockdown', 'absd', 'imagent',
+                      'identityservicesd', 'cdpd', 'followupd', 'photos.ImageConversionService',
+                      'photos.VideoConversionService', 'passd',
+                      'protectedcloudstorage.protectedcloudkeysyncing', 'SecureBackupDaemon',
+                      'contextstored', 'accountsd', 'akd', 'adid', 'appleaccountd',
+                      'BTServer.le', 'BTServer.avrcp', 'assetsd', 'sharingd', 'TextInput.kbd',
+                      'CommCenter', 'telephonyutilities.callservicesd'):
+            key = 'com.apple.' + label
+            self.assertIn(key, recommended)
+            self.assertNotIn(key, critical)
+            self.assertEqual(builtin[key], 'false', 'Reclassification must keep normal functionality On')
+        for key in recommended:
+            if key in builtin:
+                self.assertEqual(builtin[key], 'false')
         self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 
     def test_optional_media_and_wallpaper_hosts_default_off(self):
