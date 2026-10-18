@@ -349,7 +349,7 @@ if rc == 0:
     }
 
     // Native batch executor with live progress
-    private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String, live: Bool = false, completion: ((Bool) -> Void)? = nil) {
+    private func executeNativeBatch(operations: [(service: LaunchdService, disable: Bool)], title: String, live: Bool = false, airDropControl: [Any]? = nil, interfaceControl: [Any]? = nil, completion: ((Bool) -> Void)? = nil) {
         guard !isApplyingConfig, !isDiagnosingDisk, !isChangingAirDrop, isProcessing.isEmpty else { return }
         let pwd = self.rootPassword
         var seen = Set<DisabledServiceKey>()
@@ -357,7 +357,8 @@ if rc == 0:
             guard let domain = op.service.domain else { return false }
             return seen.insert(DisabledServiceKey(domain: domain, label: op.service.label)).inserted
         }
-        let total = operations.count
+        let controlCount = (airDropControl == nil ? 0 : 1) + (interfaceControl == nil ? 0 : 1)
+        let total = operations.count + controlCount
         
         guard total > 0 else {
             statusMessage = "All requested daemons already match target state."
@@ -368,8 +369,10 @@ if rc == 0:
         let warningCount = operations.filter { SafetyManager.requiresWarning($0.service.label) && $0.disable }.count
 
         isApplyingConfig = true
+        if airDropControl != nil { airDropAllowed = nil; airDropError = nil }
+        if interfaceControl != nil { springBoardUIState = nil; springBoardUIError = nil }
         showLogConsole = true
-        var startLog = "--- STARTING BATCH: \(title) (\(total) services) ---\n"
+        var startLog = "--- STARTING BATCH: \(title) (\(operations.count) services, \(controlCount) feature controls) ---\n"
         if warningCount > 0 {
             startLog += "[!] CAUTION: \(warningCount) services with keep-enabled warnings included in disable batch.\n"
         }
@@ -377,7 +380,7 @@ if rc == 0:
         applyProgressText = "\(title) [0/\(total)]"
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let rawCmd = self.nativeOverrideCommand(operations: operations, live: live)
+            let rawCmd = self.nativeOverrideCommand(operations: operations, live: live, airDropControl: airDropControl, interfaceControl: interfaceControl)
             let elevated = self.buildElevatedCommand(rawCommand: rawCmd, pwd: pwd)
 
             var completedCount = 0
@@ -401,6 +404,17 @@ if rc == 0:
                 DispatchQueue.main.async {
                     self.liveLog += "\n--- BATCH COMPLETED WITH EXIT CODE \(exitCode) ---\n"
                     self.applyProgressText = nil
+                    if airDropControl != nil {
+                        let line = self.liveLog.split(separator: "\n").last { $0.hasPrefix("airdrop_allowed=") }
+                        let value = line.flatMap { Int($0.dropFirst("airdrop_allowed=".count)) }
+                        self.airDropAllowed = value.flatMap { [0, 1].contains($0) ? $0 == 1 : nil }
+                    }
+                    if interfaceControl != nil {
+                        let line = self.liveLog.split(separator: "\n").last { $0.hasPrefix("ui_state=") }
+                        self.springBoardUIState = line.flatMap {
+                            try? JSONDecoder().decode(SpringBoardUIState.self, from: Data($0.dropFirst(9).utf8))
+                        }
+                    }
                     self.refreshState {
                         DispatchQueue.main.async {
                             self.isApplyingConfig = false
@@ -408,9 +422,13 @@ if rc == 0:
                         }
                     }
                     if exitCode == 0 {
-                        self.statusMessage = live
-                            ? "\(total) feature overrides and loaded jobs verified. Respring if a client retained its previous state."
-                            : "\(total) overrides saved. Restart userspace to apply the process changes fully."
+                        if controlCount > 0 {
+                            self.statusMessage = "\(operations.count) service overrides and \(controlCount) feature controls saved. Restart userspace to apply process changes fully."
+                        } else {
+                            self.statusMessage = live
+                                ? "\(total) feature overrides and loaded jobs verified. Respring if a client retained its previous state."
+                                : "\(total) overrides saved. Restart userspace to apply process changes fully."
+                        }
                     } else {
                         self.statusMessage = nil
                         self.errorMessage = "\(title) failed or only partially applied (exit \(exitCode)). Review the execution log."
@@ -421,19 +439,40 @@ if rc == 0:
     }
 
     func applyFeatureGroup(_ group: OverrideGroup, enable: Bool) {
+        applyFeatureGroups([group], enable: enable)
+    }
+
+    func applyFeatureGroups(_ groups: [OverrideGroup], enable: Bool, includeSpringBoardInterfaces: Bool = false) {
         guard disabledServices != nil, !isApplyingConfig, !isDiagnosingDisk,
-              !isChangingAirDrop, isProcessing.isEmpty else { return }
-        let labels = Set(group.actionLabels(enable: enable))
+              !isChangingAirDrop, !isRefreshingState, !isScanningDaemons, isProcessing.isEmpty,
+              !groups.isEmpty || includeSpringBoardInterfaces else { return }
+        var airDropControl: [Any]?
+        var interfaceControl: [Any]?
+        if groups.contains(where: \.controlsAirDrop) {
+            guard let helper = Bundle.main.path(forResource: "airdrop-policy", ofType: nil) else {
+                errorMessage = "AirDrop policy helper is missing from this build."
+                return
+            }
+            airDropControl = [helper, enable]
+        }
+        if includeSpringBoardInterfaces {
+            guard let asset = Bundle.main.path(forResource: "DaemonManagerUI", ofType: "dylib") else {
+                errorMessage = "The SpringBoard companion is missing from this build."
+                return
+            }
+            interfaceControl = [asset, !enable]
+        }
+        let labels = Set(OverrideServices.actionLabels(for: groups, enable: enable))
+        let features = Set(groups.flatMap(\.labels))
         let operations = allDaemons.filter { service in
             guard labels.contains(service.label) else { return false }
-            // Feature jobs are reverified even if their saved state already matches.
-            // Shared dependencies are enabled only when their override is disabled.
-            return group.labels.contains(service.label) || isDisabled(service) == true
+            return features.contains(service.label) || isDisabled(service) == true
         }.map { (service: $0, disable: !enable) }
         let live = operations.allSatisfy { OverrideServices.labels.contains($0.service.label) }
-        executeNativeBatch(operations: operations, title: "\(group.title): \(enable ? "On" : "Off")", live: live) { success in
-            if success && group.controlsAirDrop { self.setAirDropAllowed(enable) }
-        }
+        let title = groups.count == 1 && !includeSpringBoardInterfaces
+            ? groups[0].title : "Selected groups"
+        executeNativeBatch(operations: operations, title: "\(title): \(enable ? "On" : "Off")",
+                           live: live, airDropControl: airDropControl, interfaceControl: interfaceControl)
     }
 
     // Emergency Factory Reset (borrowed from Geranium)
@@ -547,16 +586,19 @@ if rc == 0:
         return lines.joined(separator: "\n")
     }
 
-    private func nativeOverrideCommand(operations: [(service: LaunchdService, disable: Bool)], live: Bool = false) -> String {
+    private func nativeOverrideCommand(operations: [(service: LaunchdService, disable: Bool)], live: Bool = false, airDropControl: [Any]? = nil, interfaceControl: [Any]? = nil) -> String {
         let items = operations.compactMap { op -> [String]? in
             guard let domain = op.service.domain else { return nil }
             let item = [op.service.label, op.disable ? "disable" : "enable", domain]
             return live ? item + [op.service.plistPath ?? ""] : item
         }
-        let data = try! JSONSerialization.data(withJSONObject: items)
+        let arguments: [Any] = [items, live, airDropControl as Any? ?? NSNull(), interfaceControl as Any? ?? NSNull()]
+        let data = try! JSONSerialization.data(withJSONObject: arguments)
         let payload = data.base64EncodedString()
-        let function = live ? "apply_live" : "apply"
-        let script = NativeOverrides.script + "\nsys.exit(\(function)(json.loads(base64.b64decode('\(payload)'))))\n"
+        let script = NativeOverrides.script + "\n" +
+            (airDropControl == nil ? "" : AirDropControl.script) + "\n" +
+            (interfaceControl == nil ? "" : SpringBoardUIControl.script) + "\n" +
+            FeatureBatchControl.script + "\nsys.exit(apply_feature_batch(*json.loads(base64.b64decode('\(payload)'))))\n"
         return "\(Self.shellQuote(pythonPath)) -c \(Self.shellQuote(script))"
     }
 

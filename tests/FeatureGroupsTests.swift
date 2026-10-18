@@ -25,6 +25,24 @@ struct FeatureGroupsTests {
         precondition(DefaultPresets.builtinDefaults["com.apple.avconferenced"] == false)
         precondition(SafetyManager.recommendation(for: "com.apple.avconferenced") != nil)
         precondition(!SafetyManager.isCritical("com.apple.avconferenced"))
+        precondition(OverrideServices.menuTitles == OverrideServices.menuTitles.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        })
+        precondition(OverrideServices.menuTitles.contains("SpringBoard interfaces"))
+        precondition(Set(OverrideServices.menuTitles).count == OverrideServices.menuTitles.count)
+        let dictation = OverrideServices.groups.first { $0.title == "Dictation" }!
+        let siriOnly = OverrideServices.groups.first { $0.title == "Siri" }!
+        let speech: Set<String> = ["com.apple.assistantd", "com.apple.corespeechd"]
+        precondition(Set(dictation.labels) == speech)
+        precondition(Set(siriOnly.actionLabels(enable: false)).isDisjoint(with: speech))
+        precondition(Set(siriOnly.actionLabels(enable: true)).isSuperset(of: speech))
+        let both = OverrideServices.actionLabels(for: [dictation, siriOnly, dictation], enable: true)
+        precondition(Set(both).count == both.count, "Overlapping selected groups must apply a shared job once")
+        let off = OverrideServices.actionLabels(for: [dictation, siriOnly], enable: false)
+        precondition(Set(off).isSuperset(of: speech))
+        precondition(off.allSatisfy { !SafetyManager.isCritical($0) })
+        precondition(!off.contains("com.apple.TextInput.kbd"), "Bulk Off must preserve dependency-only keyboard service")
+        precondition(speech.allSatisfy { DefaultPresets.builtinDefaults[$0] == true })
         let critical = "com.apple.searchd"
         precondition(!SafetyManager.isCritical("com.apple.appleaccountd"))
         precondition(SafetyManager.recommendation(for: "com.apple.appleaccountd") != nil)
@@ -59,14 +77,14 @@ struct FeatureGroupsTests {
             precondition(group.labels.allSatisfy { !SafetyManager.isCritical($0) }, "Critical jobs belong only to prerequisite policy, not grouped feature membership")
             precondition(Set(group.visibleLabels).count == group.visibleLabels.count)
         }
-        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri and dictation"] {
+        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
             precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
             precondition(!feature.actionLabels(enable: false).contains("com.apple.powerd"))
             precondition(!feature.actionLabels(enable: false).contains("com.apple.pluginkit.pkd"))
         }
-        let siri = OverrideServices.groups.first { $0.title == "Siri and dictation" }!
+        let siri = OverrideServices.groups.first { $0.title == "Siri" }!
         precondition(!siri.actionLabels(enable: false).contains("com.apple.searchd"), "Spotlight is not a Siri-only dependency")
         precondition(DefaultPresets.builtinDefaults["com.apple.siriactionsd"] == true)
         precondition(!SafetyManager.isCritical("com.apple.siriactionsd"))

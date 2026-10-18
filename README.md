@@ -1,5 +1,16 @@
 # Daemon Manager
 
+## Dictation and group selection — v1.0.30, 2026-10-18
+
+Keyboard dictation on the tested iPhone 8 Plus/iOS 16.7.16 needs **com.apple.assistantd + com.apple.corespeechd** together. The installed assistantd plist exports `com.apple.assistant.dictation`; corespeechd exports the speech/endpointer/local-recognition bridge endpoints. User comparisons: assistantd alone showed the microphone then closed without recording/text; adding only corespeechd produced text; removing only assistantd made dictation fail again. The working pair was restored. Other Siri/Shortcuts services remained disabled. This isolates the two additions in the existing enabled keyboard/audio/network profile, not every possible language/device dependency. Settings → General → Keyboard → Enable Dictation must also be On. Siri activation can remain Off in Settings; the backend processes are shared and cannot be made exclusive to dictation by changing their labels.
+
+**Groups → Dictation** now controls those two jobs and restores keyboard/audio prerequisites on On. Both builtin targets remain Off; the phone's manual On choice is preserved during installation. **Siri** is a separate group: On restores its shared speech prerequisites, while Off preserves the dictation pair. Dictation Off can also break Siri speech. Shortcuts has its own existing group. No builtin Boolean or Critical classification changed in this revision: **513 entries, 332 Off / 181 On, including 56 Critical On**.
+
+Every group row, including SpringBoard interfaces, is alphabetized. Tap **Select**, check several circles, then use **On** or **Off** in the bottom bar; Select All/Clear and Done are available. Bulk actions merge shared jobs into one operation, preserve Critical and prerequisite-only jobs according to the selected feature policy, and serialize native overrides, AirDrop policy and SpringBoard interface changes under one busy state. Explicitly selecting a feature Off can still remove a dependency used by another feature. Failures skip later controls and report partial failure; they do not imply rollback of changes already completed. Interface settings need respring, and broader daemon changes need userspace restart. The selected groups are temporary UI selection, not new default targets.
+
+All 32 local Python checks passed, including mixed-control sequencing and failures. Native Swift checks cover alphabetization, deduplication, speech membership and Critical/prerequisite preservation. The macOS build and device UI checks are recorded below after completion. Diagnostic relay collection was temporary; diagnosticd was restored Off. Raw speech logs remain private and are not committed. No new RAM/battery benefit is claimed.
+
+
 ## Current defaults and batch review — v1.0.29, 2026-10-18
 
 This section supersedes older counts, classifications, paths and current-state claims below. The maintained app checkout is `/mnt/zram1/daemon_manager-review`, remote [dusklinux/daemon_manager](https://github.com/dusklinux/daemon_manager). The connected iPhone 8 Plus was restored today after a bootloop; older phone profiles are historical. USB SSH currently uses mobile with sudo; root SSH did not authenticate. Discover the address, user and runtime again on another device.

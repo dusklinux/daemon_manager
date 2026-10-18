@@ -2,42 +2,98 @@ import SwiftUI
 
 struct FeatureGroupsView: View {
     @EnvironmentObject var model: AppModel
+    @State private var selecting = false
+    @State private var selected: Set<String> = []
     let onSafetyPrompt: (LaunchdService, Bool) -> Void
+
+    private var busy: Bool {
+        model.isApplyingConfig || model.isDiagnosingDisk || model.isChangingAirDrop ||
+        !model.isProcessing.isEmpty || model.isScanningDaemons || model.isRefreshingState
+    }
+
+    private func applySelection(enable: Bool) {
+        model.applyFeatureGroups(OverrideServices.groups.filter { selected.contains($0.id) },
+                                 enable: enable,
+                                 includeSpringBoardInterfaces: selected.contains(OverrideServices.springBoardInterfacesTitle))
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                HStack(spacing: 8) {
-                    NavigationLink("SpringBoard interfaces") { SpringBoardInterfacesView() }
-                    Button("On") { model.setSpringBoardInterfaces(disabled: false) }.buttonStyle(.bordered)
-                    Button("Off") { model.setSpringBoardInterfaces(disabled: true) }.buttonStyle(.bordered)
-                }
-                .disabled(model.isApplyingConfig || model.isDiagnosingDisk || model.isChangingAirDrop ||
-                          !model.isProcessing.isEmpty || model.isScanningDaemons || model.isRefreshingState)
-                ForEach(OverrideServices.groups) { group in
+                ForEach(OverrideServices.menuTitles, id: \.self) { title in
                     HStack(spacing: 8) {
-                        NavigationLink {
-                            FeatureGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(group.title)
-                                Text(featureGroupState(group, model: model))
-                                    .font(.caption).foregroundColor(.secondary)
+                        if selecting {
+                            Button {
+                                if !selected.insert(title).inserted { selected.remove(title) }
+                            } label: {
+                                Image(systemName: selected.contains(title) ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Select \(title)")
+                            .accessibilityValue(selected.contains(title) ? "Selected" : "Not selected")
+                        }
+                        if title == OverrideServices.springBoardInterfacesTitle {
+                            NavigationLink(title) { SpringBoardInterfacesView() }
+                            if !selecting {
+                                Button("On") { model.setSpringBoardInterfaces(disabled: false) }.buttonStyle(.bordered)
+                                Button("Off") { model.setSpringBoardInterfaces(disabled: true) }.buttonStyle(.bordered)
+                            }
+                        } else if let group = OverrideServices.groups.first(where: { $0.id == title }) {
+                            NavigationLink {
+                                FeatureGroupView(group: group, onSafetyPrompt: onSafetyPrompt)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(group.title)
+                                    Text(featureGroupState(group, model: model))
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            if !selecting {
+                                Button("On") { model.applyFeatureGroup(group, enable: true) }.buttonStyle(.bordered)
+                                Button("Off") { model.applyFeatureGroup(group, enable: false) }
+                                    .buttonStyle(.bordered)
+                                    .disabled(group.actionLabels(enable: false).isEmpty)
                             }
                         }
-                        Button("On") { model.applyFeatureGroup(group, enable: true) }
-                            .buttonStyle(.bordered)
-                        Button("Off") { model.applyFeatureGroup(group, enable: false) }
-                            .buttonStyle(.bordered)
-                            .disabled(group.actionLabels(enable: false).isEmpty)
                     }
-                    .disabled(model.isApplyingConfig || model.isDiagnosingDisk || model.isChangingAirDrop ||
-                              !model.isProcessing.isEmpty || model.isScanningDaemons || model.isRefreshingState)
+                    .disabled(busy)
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Feature Groups")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if selecting {
+                        Button(selected.count == OverrideServices.menuTitles.count ? "Clear" : "Select All") {
+                            selected = selected.count == OverrideServices.menuTitles.count ? [] : Set(OverrideServices.menuTitles)
+                        }
+                        .disabled(busy)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(selecting ? "Done" : "Select") {
+                        selecting.toggle()
+                        if !selecting { selected.removeAll() }
+                    }
+                    .disabled(busy)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if selecting {
+                    HStack {
+                        Text("\(selected.count) selected").font(.subheadline)
+                        Spacer()
+                        Button("On") { applySelection(enable: true) }
+                        Button("Off") { applySelection(enable: false) }
+                    }
+                    .buttonStyle(.bordered)
+                    .padding()
+                    .background(.bar)
+                    .disabled(selected.isEmpty || busy)
+                }
+            }
         }
     }
 }
