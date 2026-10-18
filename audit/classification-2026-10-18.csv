@@ -12,7 +12,7 @@ com.apple.BTServer.le,NO,no,Recommended On,False
 com.apple.BTServer.map,yes,yes,Optional,True
 com.apple.BTServer.pbap,yes,yes,Optional,True
 com.apple.BarcodeSupport.BarcodeNotificationService,yes,yes,Optional,True
-com.apple.BlueTool,no,no,Optional,False
+com.apple.BlueTool,no,NO,Critical,False
 com.apple.BluetoothUIService,no,no,Optional,False
 com.apple.CallHistorySyncHelper,yes,yes,Optional,True
 com.apple.CarPlayApp,yes,yes,Optional,True
@@ -125,7 +125,7 @@ com.apple.biomed,NO,no,Recommended On,False
 com.apple.biomesyncd,yes,yes,Optional,True
 com.apple.biometrickitd.mesa,no,no,Optional,False
 com.apple.bird,yes,yes,Optional,True
-com.apple.bluetoothd,no,no,Optional,False
+com.apple.bluetoothd,no,NO,Critical,False
 com.apple.bluetoothuserd,no,no,Optional,False
 com.apple.bookassetd,yes,yes,Optional,True
 com.apple.bookdatastored,yes,yes,Optional,True

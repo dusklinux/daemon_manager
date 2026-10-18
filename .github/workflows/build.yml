@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.30
+          tag_name: v1.0.31
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.30"
-          body: "Separate tested keyboard Dictation from Siri, alphabetize every feature group, and apply selected groups in one serialized batch including AirDrop and SpringBoard controls. Builtin daemon targets remain unchanged. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.31"
+          body: "Protect bluetoothd and BlueTool after isolated CPU/retry failures; keep shared CommCenter and AVConference prerequisites enabled in grouped Off actions. Bluetooth helpers now states its actual scope. Builtin Boolean targets remain unchanged; device audit details are in audit/2026-10-18.md. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

@@ -43,6 +43,18 @@ struct FeatureGroupsTests {
         precondition(off.allSatisfy { !SafetyManager.isCritical($0) })
         precondition(!off.contains("com.apple.TextInput.kbd"), "Bulk Off must preserve dependency-only keyboard service")
         precondition(speech.allSatisfy { DefaultPresets.builtinDefaults[$0] == true })
+        let bluetooth = OverrideServices.groups.first { $0.title == "Bluetooth helpers" }!
+        precondition(SafetyManager.isCritical("com.apple.BlueTool"))
+        precondition(!bluetooth.visibleLabels.contains("com.apple.BlueTool"))
+        precondition(!bluetooth.actionLabels(enable: false).contains("com.apple.BlueTool"))
+        precondition(SafetyManager.isCritical("com.apple.bluetoothd"))
+        precondition(!bluetooth.visibleLabels.contains("com.apple.bluetoothd"))
+        precondition(!bluetooth.actionLabels(enable: false).contains("com.apple.bluetoothd"))
+        precondition(bluetooth.actionLabels(enable: true).contains("com.apple.bluetoothd"))
+        let calls = OverrideServices.groups.first { $0.title == "Calls and SMS" }!
+        precondition(!calls.actionLabels(enable: false).contains("com.apple.CommCenter"))
+        precondition(calls.actionLabels(enable: true).contains("com.apple.CommCenter"))
+        precondition(!SafetyManager.isCritical("com.apple.CommCenter"))
         let critical = "com.apple.searchd"
         precondition(!SafetyManager.isCritical("com.apple.appleaccountd"))
         precondition(SafetyManager.recommendation(for: "com.apple.appleaccountd") != nil)
@@ -77,7 +89,7 @@ struct FeatureGroupsTests {
             precondition(group.labels.allSatisfy { !SafetyManager.isCritical($0) }, "Critical jobs belong only to prerequisite policy, not grouped feature membership")
             precondition(Set(group.visibleLabels).count == group.visibleLabels.count)
         }
-        for title in ["Bluetooth", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri"] {
+        for title in ["Bluetooth helpers", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
             precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
@@ -114,6 +126,8 @@ struct FeatureGroupsTests {
         let messages = OverrideServices.groups.first { $0.title == "Messages and FaceTime" }!
         precondition(messages.actionLabels(enable: false).contains("com.apple.imagent"), "An explicit messaging opt-out must stop its SMS broker")
         precondition(messages.actionLabels(enable: false).contains("com.apple.identityservicesd"))
+        precondition(!messages.actionLabels(enable: false).contains("com.apple.avconferenced"), "Messages Off must preserve the callservicesd AVConference dependency")
+        precondition(messages.actionLabels(enable: true).contains("com.apple.avconferenced"))
         let account = OverrideServices.groups.first { $0.title == "Apple Account and settings sync" }!
         for label in ["com.apple.absd", "com.apple.cdpd", "com.apple.followupd", "com.apple.identityservicesd", "com.apple.imagent", "com.apple.akd", "com.apple.adid", "com.apple.appleaccountd"] {
             precondition(account.actionLabels(enable: true).contains(label), "Account On omitted a tested prerequisite")
