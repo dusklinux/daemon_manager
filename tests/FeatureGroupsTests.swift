@@ -9,6 +9,22 @@ struct FeatureGroupsTests {
             precondition(SafetyManager.warning(for: label) != nil)
             precondition(DefaultPresets.builtinDefaults[label] == false)
         }
+        // Old inherited targets adopt this revision; explicit differing choices survive.
+        let migrated = DefaultPresets.migratedLegacyDefaults([
+            "com.apple.progressd": false, "com.apple.ndoagent": true,
+            "com.apple.avconferenced": true, "com.apple.matd": true,
+            "com.apple.logd_helper": false
+        ])
+        precondition(migrated["com.apple.progressd"] == nil)
+        precondition(migrated["com.apple.avconferenced"] == nil)
+        precondition(migrated["com.apple.ndoagent"] == true)
+        precondition(migrated["com.apple.matd"] == true)
+        precondition(migrated["com.apple.logd_helper"] == nil)
+        precondition(DefaultPresets.builtinDefaults["com.apple.bootpd"] == true,
+                     "Apply Defaults uses the plist's declared job label, not its filename")
+        precondition(DefaultPresets.builtinDefaults["com.apple.avconferenced"] == false)
+        precondition(SafetyManager.recommendation(for: "com.apple.avconferenced") != nil)
+        precondition(!SafetyManager.isCritical("com.apple.avconferenced"))
         let critical = "com.apple.searchd"
         precondition(!SafetyManager.isCritical("com.apple.appleaccountd"))
         precondition(SafetyManager.recommendation(for: "com.apple.appleaccountd") != nil)

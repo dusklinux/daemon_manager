@@ -1,10 +1,11 @@
 label,previous_marker,current_marker,current_class,default_disabled
-bootps,no,no,Optional,False
+bootps,no,yes,Optional,True
+com.apple.bootpd,absent,yes,Optional,True
 com.apple.ABDatabaseDoctor,yes,yes,Optional,True
 com.apple.AdminLite,NO,NO,Critical,False
 com.apple.AppSSODaemon,yes,yes,Optional,True
 com.apple.AppleCredentialManagerDaemon,yes,yes,Optional,True
-com.apple.AssetCacheLocatorService,no,no,Optional,False
+com.apple.AssetCacheLocatorService,no,yes,Optional,True
 com.apple.AuthenticationServicesCore.AuthenticationServicesAgent,no,no,Optional,False
 com.apple.BTServer.avrcp,NO,no,Recommended On,False
 com.apple.BTServer.le,NO,no,Recommended On,False
@@ -23,9 +24,9 @@ com.apple.CommCenterMobileHelper,NO,no,Recommended On,False
 com.apple.CommCenterRootHelper,NO,no,Recommended On,False
 com.apple.CoreAuthentication.daemon,NO,NO,Critical,False
 com.apple.DMHelper,yes,yes,Optional,True
-com.apple.DataDetectorsSourceAccess,no,no,Optional,False
+com.apple.DataDetectorsSourceAccess,no,yes,Optional,True
 com.apple.DesktopServicesHelper,yes,yes,Optional,True
-com.apple.DragUI.druid,NO,no,Recommended On,False
+com.apple.DragUI.druid,NO,yes,Optional,True
 com.apple.DumpBasebandCrash,yes,yes,Optional,True
 com.apple.DumpPanic,yes,yes,Optional,True
 com.apple.EscrowSecurityAlert,yes,yes,Optional,True
@@ -77,7 +78,7 @@ com.apple.abm-helper,yes,yes,Optional,True
 com.apple.absd,NO,no,Recommended On,False
 com.apple.accessibility.axassetsd,yes,yes,Optional,True
 com.apple.accessibility.axremoted,yes,yes,Optional,True
-com.apple.accessibility.heard,NO,no,Recommended On,False
+com.apple.accessibility.heard,NO,yes,Optional,True
 com.apple.accessibility.motiontrackingd,yes,yes,Optional,True
 com.apple.accessoryd,yes,yes,Optional,True
 com.apple.accessoryupdaterd,yes,yes,Optional,True
@@ -113,7 +114,7 @@ com.apple.assistantd,yes,yes,Optional,True
 com.apple.assistivetouchd,yes,yes,Optional,True
 com.apple.atc,yes,yes,Optional,True
 com.apple.avatarsd,yes,yes,Optional,True
-com.apple.avconferenced,yes,yes,Optional,True
+com.apple.avconferenced,yes,no,Recommended On,False
 com.apple.awdd,yes,yes,Optional,True
 com.apple.backboardd,NO,NO,Critical,False
 com.apple.backgroundassets.user,yes,yes,Optional,True
@@ -129,7 +130,7 @@ com.apple.bluetoothuserd,no,no,Optional,False
 com.apple.bookassetd,yes,yes,Optional,True
 com.apple.bookdatastored,yes,yes,Optional,True
 com.apple.businessservicesd,yes,yes,Optional,True
-com.apple.cache_delete,no,no,Optional,False
+com.apple.cache_delete,no,no,Recommended On,False
 com.apple.calaccessd,yes,yes,Optional,True
 com.apple.captiveagent,yes,yes,Optional,True
 com.apple.carkitd,yes,yes,Optional,True
@@ -147,7 +148,7 @@ com.apple.cloudd,yes,yes,Optional,True
 com.apple.cloudpaird,yes,yes,Optional,True
 com.apple.cloudphotod,yes,yes,Optional,True
 com.apple.cloudsettingssyncagent,yes,yes,Optional,True
-com.apple.cmfsyncagent,no,no,Optional,False
+com.apple.cmfsyncagent,no,yes,Optional,True
 com.apple.commandandcontrol,yes,yes,Optional,True
 com.apple.companion_proxy,yes,yes,Optional,True
 com.apple.companionauthd,yes,yes,Optional,True
@@ -175,7 +176,7 @@ com.apple.dasd,NO,NO,Critical,False
 com.apple.dataaccess.dataaccessd,yes,yes,Optional,True
 com.apple.datastored,no,no,Optional,False
 com.apple.deferredmediad,no,no,Optional,False
-com.apple.deleted_helper,no,no,Optional,False
+com.apple.deleted_helper,no,no,Recommended On,False
 com.apple.device-o-matic,yes,yes,Optional,True
 com.apple.deviceaccessd,no,no,Optional,False
 com.apple.devicecheckd,no,no,Optional,False
@@ -187,7 +188,7 @@ com.apple.diagnosticd,yes,yes,Optional,True
 com.apple.diagnosticextensionsd,yes,yes,Optional,True
 com.apple.dietapplecamerad,no,no,Optional,False
 com.apple.dietappleh13camerad,no,no,Optional,False
-com.apple.diskarbitrationd,no,no,Optional,False
+com.apple.diskarbitrationd,no,no,Recommended On,False
 com.apple.diskimagesiod,NO,NO,Critical,False
 com.apple.diskimagesiod.ram,yes,yes,Optional,True
 com.apple.distnoted.xpc.daemon,NO,NO,Critical,False
@@ -221,7 +222,7 @@ com.apple.fitcore.session,yes,yes,Optional,True
 com.apple.fitnesscoachingd,yes,yes,Optional,True
 com.apple.followupd,NO,no,Recommended On,False
 com.apple.fontservicesd,no,no,Optional,False
-com.apple.fs_task_scheduler,no,no,Optional,False
+com.apple.fs_task_scheduler,no,no,Recommended On,False
 com.apple.fseventsd,NO,NO,Critical,False
 com.apple.ftp-proxy-embedded,yes,yes,Optional,True
 com.apple.fullkeyboardaccess,yes,yes,Optional,True
@@ -258,7 +259,7 @@ com.apple.imautomatichistorydeletionagent,yes,yes,Optional,True
 com.apple.imcore.imtransferagent,no,no,Optional,False
 com.apple.imtransferagent,no,no,Optional,False
 com.apple.inboxupdaterd,yes,yes,Optional,True
-com.apple.ind,no,no,Optional,False
+com.apple.ind,no,yes,Optional,True
 com.apple.installcoordination_proxy,no,no,Optional,False
 com.apple.installcoordinationd,no,no,Optional,False
 com.apple.intelligenceplatformd,yes,yes,Optional,True
@@ -279,7 +280,7 @@ com.apple.localizationswitcherd,yes,yes,Optional,True
 com.apple.locationd,no,no,Optional,False
 com.apple.locationpushd,yes,yes,Optional,True
 com.apple.logd,no,no,Optional,False
-com.apple.logd_helper,no,no,Optional,False
+com.apple.logd_helper,no,no,Recommended On,False
 com.apple.lsd,NO,NO,Critical,False
 com.apple.lsd.system,NO,NO,Critical,False
 com.apple.lskdd,NO,NO,Critical,False
@@ -290,7 +291,7 @@ com.apple.mDNSResponderHelper.reloaded,NO,NO,Critical,False
 com.apple.managedconfiguration.passcodenagd,yes,yes,Optional,True
 com.apple.managedconfiguration.profiled,yes,yes,Optional,True
 com.apple.maps.destinationd,yes,yes,Optional,True
-com.apple.matd,no,no,Optional,False
+com.apple.matd,no,yes,Optional,True
 com.apple.mdt,yes,yes,Optional,True
 com.apple.mediaanalysisd,yes,yes,Optional,True
 com.apple.mediaanalysisd.service,yes,yes,Optional,True
@@ -301,10 +302,10 @@ com.apple.mediaremoted,no,no,Optional,False
 com.apple.mediaserverd,no,no,Optional,False
 com.apple.mediasetupd,yes,yes,Optional,True
 com.apple.mediastream.mstreamd,yes,yes,Optional,True
-com.apple.memory-maintenance,no,no,Optional,False
+com.apple.memory-maintenance,no,no,Recommended On,False
 com.apple.merchantd,yes,yes,Optional,True
 com.apple.metrickitd,yes,yes,Optional,True
-com.apple.midiserver,no,no,Optional,False
+com.apple.midiserver,no,yes,Optional,True
 com.apple.midiserver-ios,yes,yes,Optional,True
 com.apple.misagent,NO,NO,Critical,False
 com.apple.mlmodelingd,yes,yes,Optional,True
@@ -339,8 +340,8 @@ com.apple.mobilestoredemodhelper,yes,yes,Optional,True
 com.apple.mobiletimerd,no,no,Optional,False
 com.apple.momentsd,yes,yes,Optional,True
 com.apple.mtmergeprops,no,no,Optional,False
-com.apple.nand.aspcarry,no,no,Optional,False
-com.apple.nand_task_scheduler,no,no,Optional,False
+com.apple.nand.aspcarry,no,yes,Optional,True
+com.apple.nand_task_scheduler,no,no,Recommended On,False
 com.apple.nanobackupd,yes,yes,Optional,True
 com.apple.nanoprefsyncd,yes,yes,Optional,True
 com.apple.nanoprefsyncd.2,yes,yes,Optional,True
@@ -349,7 +350,7 @@ com.apple.nanoregistrylaunchd,yes,yes,Optional,True
 com.apple.nanotimekitcompaniond,yes,yes,Optional,True
 com.apple.naturallanguaged,yes,yes,Optional,True
 com.apple.navd,yes,yes,Optional,True
-com.apple.ndoagent,no,no,Optional,False
+com.apple.ndoagent,no,yes,Optional,True
 com.apple.neagent-ios,yes,yes,Optional,True
 com.apple.nearbyd,yes,yes,Optional,True
 com.apple.nehelper,NO,NO,Critical,False
@@ -360,7 +361,7 @@ com.apple.newsd,yes,yes,Optional,True
 com.apple.nexusd,no,no,Optional,False
 com.apple.nfcd,yes,yes,Optional,True
 com.apple.nfrestore,yes,yes,Optional,True
-com.apple.nlcd,no,no,Optional,False
+com.apple.nlcd,no,yes,Optional,True
 com.apple.notifyd,NO,NO,Critical,False
 com.apple.nsurlsessiond,no,no,Optional,False
 com.apple.online-auth-agent.xpc,no,no,Optional,False
@@ -389,14 +390,14 @@ com.apple.preboardservice_v2,NO,NO,Critical,False
 com.apple.printd,yes,yes,Optional,True
 com.apple.privacyaccountingd,yes,yes,Optional,True
 com.apple.proactiveeventtrackerd,yes,yes,Optional,True
-com.apple.progressd,no,no,Optional,False
+com.apple.progressd,no,yes,Optional,True
 com.apple.protectedcloudstorage.protectedcloudkeysyncing,NO,no,Recommended On,False
 com.apple.proximitycontrold,yes,yes,Optional,True
 com.apple.ptpcamerad,yes,yes,Optional,True
 com.apple.ptpd,yes,yes,Optional,True
 com.apple.purplebuddy.budd,yes,yes,Optional,True
 com.apple.quicklook.ThumbnailsAgent,yes,yes,Optional,True
-com.apple.racoon,no,no,Optional,False
+com.apple.racoon,no,yes,Optional,True
 com.apple.rapportd,NO,NO,Critical,False
 com.apple.recentsd,yes,yes,Optional,True
 com.apple.relatived,yes,yes,Optional,True
@@ -405,7 +406,7 @@ com.apple.remoted,yes,yes,Optional,True
 com.apple.remotemanagementd,yes,yes,Optional,True
 com.apple.replayd,yes,yes,Optional,True
 com.apple.retimerd,no,no,Optional,False
-com.apple.reversetemplated,no,no,Optional,False
+com.apple.reversetemplated,no,yes,Optional,True
 com.apple.revisiond,yes,yes,Optional,True
 com.apple.routined,yes,yes,Optional,True
 com.apple.rtcreportingd,yes,yes,Optional,True
@@ -446,7 +447,7 @@ com.apple.sportsd,yes,yes,Optional,True
 com.apple.spotlight.IndexAgent,yes,yes,Optional,True
 com.apple.spotlightknowledged,yes,yes,Optional,True
 com.apple.storagedatad,yes,yes,Optional,True
-com.apple.storagekitd,no,no,Optional,False
+com.apple.storagekitd,no,no,Recommended On,False
 com.apple.storebookkeeperd,yes,yes,Optional,True
 com.apple.storekitd,no,no,Optional,False
 com.apple.streaming_zip_conduit,yes,yes,Optional,True
@@ -456,13 +457,13 @@ com.apple.swcd,no,no,Optional,False
 com.apple.symptomsd,yes,yes,Optional,True
 com.apple.symptomsd-diag,yes,yes,Optional,True
 com.apple.symptomsd.helper,yes,yes,Optional,True
-com.apple.synapse.contentlinkingd,no,no,Optional,False
+com.apple.synapse.contentlinkingd,no,yes,Optional,True
 com.apple.syncdefaultsd,NO,no,Recommended On,False
 com.apple.sysdiagnose,yes,yes,Optional,True
 com.apple.sysdiagnose.darwinos,yes,yes,Optional,True
 com.apple.sysdiagnose_helper,yes,yes,Optional,True
 com.apple.syslogd,yes,yes,Optional,True
-com.apple.systemstats.microstackshot_periodic,NO,no,Recommended On,False
+com.apple.systemstats.microstackshot_periodic,NO,yes,Optional,True
 com.apple.tailspind,yes,yes,Optional,True
 com.apple.tccd,NO,NO,Critical,False
 com.apple.telephonyutilities.callservicesd,NO,no,Recommended On,False

@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.28
+          tag_name: v1.0.29
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.28"
-          body: "Keep Critical services in their dedicated tab and descriptions. Feature Groups hide Critical prerequisites from service rows and status summaries while On still restores required prerequisites. Preserve stability classifications, every builtin On/Off target and existing service settings. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.29"
+          body: "Seventeen optional jobs default Off after scoped iOS 16.7.16 batch checks. Keep AVConference On after a reproduced callservicesd retry loop; preserve log maintenance and storage/memory infrastructure. Include the actual bootpd job label. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
