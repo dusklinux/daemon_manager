@@ -1,6 +1,6 @@
 # Daemon Manager
 
-## SMS/contact recovery and regular-use defaults — 2026-10-21, v1.0.34 prepared
+## SMS/contact recovery and regular-use defaults — 2026-10-21, v1.0.34 installed
 
 `com.apple.accessibility.heard` and `com.apple.DragUI.druid` now default **On**
 (`no` / builtin `false`) in the working source and mirrored config, at the owner's
@@ -22,10 +22,23 @@ its original intermittent delay was not independently isolated to this service.
 Matching source/config: **513 targets, 328 Off / 185 On, including 58 Critical On**.
 Only these three Boolean targets changed. Existing explicit custom choices remain
 authoritative. The historical full-copy preference migration retains its original
-builtin reference values. Installing the app does not apply defaults. The installed
-phone app was verified as **v1.0.33/build 34** before this work; these source changes
-have not yet been built or installed. Older sections listing these two jobs Off
+builtin reference values. Installing the app does not apply defaults.
+The phone now runs **v1.0.34/build 35**, installed through TrollStore Lite after the
+[macOS workflow](https://github.com/dusklinux/daemon_manager/actions/runs/39599823153)
+passed Python/native Swift checks and built/signed the IPA. Release, downloaded and
+phone IPA hashes matched. App preferences and saved overrides were unchanged by
+installation; the source commit is `060c7f33288d9b04e892d2a9478f3bc0f552b8b4`.
+Older sections listing these three jobs Off
 are superseded as intended targets, not rewritten as historical test results.
+
+The separate Apple sign-in stall was a Duskie Settings code deadlock, not a
+missing account daemon: its bundle-load observer waited for main while main waited
+for the rendering queue loading that bundle. A native fixture failed with the
+installed library and passed with the corrected one. The focused signed library
+fix was installed and then packaged/published as Duskie 0.2.71; the owner confirmed
+code entry and successful sign-in. The installed package and library hash were verified.
+Temporary diagnosticd was restored disabled/unregistered and owned captures stopped.
+See the app audit `audit/2026-10-21-feature-repair.md` for the batch and build record.
 
 ## Disk Health Metrics & Verified Unit Conversion — 2026-10-21, v1.0.33
 
@@ -36,14 +49,6 @@ Empirically resolved the unit ambiguity in Apple Storage Processor (ASP) NAND he
 - **Cycle Ratings & Wear:** Added dual erase cycle display comparing current average erase cycles to rated limits (`averageTLCPECycles / maxNativeEndurance` and `averageSLCPECycles / maxSLCEndurance`), along with percent used and remaining wear for TLC and SLC partitions.
 - **Active User Storage & Defect Tracking:** Exposed `validLbas` (active user data mapped on NAND), plus hardware integrity metrics (`smartCritWarnings`, `numGrownBad`, `numRetiredBlocks`, `ueccReads`).
 - **Read & Boot Counters:** Added optional display for `hostReads`, `nandReads`, read amplification, `boots`, `shutdowns`, and `uncleanBoots` when available in the snapshot.
-
-The separate Apple sign-in stall was a Duskie Settings code deadlock, not a
-missing account daemon: its bundle-load observer waited for main while main waited
-for the rendering queue loading that bundle. A native fixture failed with the
-installed library and passed with the corrected one. The focused signed library
-hotfix was installed; the owner confirmed code entry and successful sign-in.
-Temporary diagnosticd was restored disabled/unregistered and owned captures stopped.
-See the app audit `audit/2026-10-21-feature-repair.md` for the batch and build record.
 
 ## Auto-Lock policy recommendation — 2026-10-21, v1.0.32
 

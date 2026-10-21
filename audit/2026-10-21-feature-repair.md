@@ -11,9 +11,8 @@ Device: iPhone10,2, iOS 16.7.16/20H392, palera1n rootless. USB SSH uses existing
 port 2222, mobile key authentication and interactive sudo. Direct root password
 authentication failed; credentials were not modified. Only userspace was restarted.
 Installed Daemon Manager was v1.0.33/build 34, source
-`cd9896de940ca70220b419faff4c6baf6153c540`. Prepared source is v1.0.34/build 35;
-it is not yet built/installed. App/source and relevant note diffs were recorded
-before edits. The owner subsequently authorized publishing and installing these updates without repeated approval; build/deployment results will be recorded below.
+`cd9896de940ca70220b419faff4c6baf6153c540`. The update is v1.0.34/build 35 and is now built, published and installed. App/source and relevant note diffs were recorded
+before edits. The owner subsequently authorized publishing and installing these updates without repeated approval; build/deployment results are recorded below.
 
 ## SMS/contact isolation
 
@@ -64,8 +63,7 @@ the historical full-copy migration's original reference values are unchanged.
 
 All 33 local Python tests passed. New native Swift policy assertions cover the
 feature groups/defaults, legacy explicit-choice preservation and CommunicationsFilter
-On/Off prerequisite handling. Native Swift execution and full IPA build require
-the macOS build workflow and have not yet run for this source.
+On/Off prerequisite handling. The macOS workflow subsequently passed the native Swift checks and full iOS build, signing, packaging and release; deployment is recorded below.
 
 ## Separate Apple sign-in UI fault
 
@@ -91,9 +89,7 @@ cross-compiled with Clang 23.1.3 and the existing SDK (reports 16.4), signed on 
 phone, installed with root:wheel/0755 and an atomic rename, then Settings was
 terminated/reopened. Installed bytes match the signed candidate, SHA256:
 `b272952fb1dfd9940941836009c842864f2587323c983c62915eb5868f364e12`.
-This is a local Duskie library hotfix; Debian package metadata is unchanged, so
-reinstalling an older package can replace it. Source and regression fixture reside
-in the Duskie checkout. The owner confirmed the code-entry page appeared and Apple Account sign-in completed smoothly after this fix.
+The same signed library was subsequently packaged, published and installed as Duskie 0.2.71~duskie1, with dpkg reporting install ok installed. Source, fixture, package checksum and archive comparison reside in the Duskie checkout (`research/FIXES-0.2.71.md`). Reinstalling an older package can replace the fix. The owner confirmed the code-entry page appeared and Apple Account sign-in completed smoothly after this fix.
 Apple had also reported excessive verification-code requests during earlier attempts.
 Do not treat that server response as evidence of another disabled daemon.
 
@@ -106,3 +102,26 @@ Raw logs, samples and local before-file snapshots are private under
 account or message metadata and must not be published as audit attachments.
 
 Both owned relay captures were stopped and temporary diagnosticd was restored disabled/unregistered. The verified final semantic override difference from the immediate pre-batch backup is exactly cmfsyncagent enabled; override-file metadata remains root:wheel/0644. SMS database metadata advanced to row 16 after fresh delivery and sign-in tests. Raw message content was not inspected.
+
+## Published build and installation
+
+[Actions 39599823153](https://github.com/dusklinux/daemon_manager/actions/runs/39599823153)
+passed all 33 Python checks, native Swift policy/migration/elevation/memory checks,
+iOS compilation, entitlement signing, packaging and release for source
+`060c7f33288d9b04e892d2a9478f3bc0f552b8b4`.
+[v1.0.34/build 35](https://github.com/dusklinux/daemon_manager/releases/tag/v1.0.34)
+IPA SHA256 `23f1195ac7785851a4d8bbb49b0cd938a8b8a3b9820d31cf81a3ac04d3b7531a`
+matched the GitHub digest, host download and transferred phone file. TrollStore Lite
+install returned 0; uiopen returned 0 and DaemonApp was observed running. Installed
+version/build/source match the IPA. Parsed app preferences, Duskie preferences and
+native override map compare equal immediately before/after both package installs.
+Installation did not apply defaults or replace user selections.
+
+Duskie 0.2.71 package SHA256
+`1795a0c40deaac863c2dc7cde9c790b77d546b6d8a3ffbfaa6dc50211e1c56f6`
+matched on host/phone; dpkg returned 0. Its installed library retains the fixed hash.
+Only its Settings library and five version plists differ from the prior package;
+other data and maintainer scripts are identical. No extra userspace restart was
+needed because Settings had already been reopened using this identical hotfix.
+The owner confirmed SMS/contact/Wi-Fi checks and Apple sign-in before packaging;
+no further broad daemon audit, overnight test or measured performance claim is made.
