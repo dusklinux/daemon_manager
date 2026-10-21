@@ -1,6 +1,6 @@
 # Daemon Manager
 
-## Voice downloads, service selection and session apply — v1.0.35
+## Voice downloads, service selection and session apply — v1.0.36
 
 US English Siri Voice 5 (Quinn) downloaded and worked after restoring only
 `com.apple.triald`. Its request used Trial asset delivery, not only mobileassetd.
@@ -35,7 +35,8 @@ host-unload check raced asynchronous deregistration; later state was absent, whi
 motivated the bounded verification wait. This is a short functional check.
 
 CarPlay, Handoff, Watch helpers and nearby/AirPods helpers have discoverable groups;
-their optional jobs already default Off. Shared Bluetooth, discovery/sharing,
+their optional jobs already default Off. The Watch group includes the verified actual
+`com.apple.nanoprefsyncd.2` job label as well as its filename alias. Shared Bluetooth, discovery/sharing,
 registry, audio and core UI prerequisites retain their classifications. There are
 513 targets, 329 Off / 184 On, including 58 Critical On. Apply Defaults was not used
 on the phone; the owner's manually enabled Siri services are preserved.

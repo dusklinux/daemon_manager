@@ -64,6 +64,9 @@ struct FeatureGroupsTests {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(feature.labels.allSatisfy { DefaultPresets.builtinDefaults[$0] == true })
         }
+        let watch = OverrideServices.groups.first { $0.title == "Apple Watch helpers" }!
+        precondition(watch.actionLabels(enable: true).contains("com.apple.nanoprefsyncd.2"),
+                     "The installed Watch preference-sync label differs from its plist filename")
         let dictation = OverrideServices.groups.first { $0.title == "Dictation" }!
         let siriOnly = OverrideServices.groups.first { $0.title == "Siri" }!
         let speech: Set<String> = ["com.apple.assistantd", "com.apple.corespeechd"]
