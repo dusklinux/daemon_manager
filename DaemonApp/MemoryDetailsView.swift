@@ -39,6 +39,28 @@ struct MemoryDetailsView: View {
                     Text("Each addition writes varied random data into 100 MiB. Held pages are not continually rewritten. Pressure can compress other pages or terminate apps; this is a stress test, not additional RAM. Clear releases test memory. Closing this sheet or backgrounding releases it automatically. App headroom is advisory and can change; Jetsam limits still apply.")
                         .font(.caption).foregroundColor(.secondary)
                 }
+                Section("2 GiB inflation worker") {
+                    if let status = model.duskMemoryStatus {
+                        memoryRow("Worker allocation", Double(status.bytes) / 1_048_576)
+                        Text(status.title).font(.caption)
+                        if status.state == 1 {
+                            ProgressView(value: Double(status.bytes), total: Double(max(status.target, 1)))
+                        }
+                        if status.error != 0 { Text("Worker error: \(status.error)").foregroundColor(.red) }
+                    }
+                    HStack {
+                        Button("Inflate to 2 GiB") { model.setDuskieMemory(enabled: true) }
+                            .disabled(!model.hasDuskieMemoryWorker || model.isChangingDuskieMemory || model.duskMemoryStatus?.state != 0)
+                        Button("Release") { model.setDuskieMemory(enabled: false) }
+                            .disabled(model.isChangingDuskieMemory || model.duskMemoryStatus == nil || model.duskMemoryStatus?.state == 0)
+                    }.buttonStyle(.bordered)
+                    if let error = model.duskMemoryError { Text(error).font(.caption).foregroundColor(.red) }
+                    Text("Uses the installed Duskie worker, with its own process memory allowance and random page fill. It stays active while switching apps or closing this sheet; use Release to stop it. Manual 100 MiB controls above remain separate. This creates memory pressure, not extra RAM, and can cause apps to close.")
+                        .font(.caption).foregroundColor(.secondary)
+                    if !model.hasDuskieMemoryWorker {
+                        Text("Install Duskie with its memory worker to use this control.").font(.caption)
+                    }
+                }
                 Section("Memory pressure") {
                     HStack {
                         Circle().fill(pressureColor).frame(width: 10, height: 10)
@@ -110,8 +132,12 @@ struct MemoryDetailsView: View {
         .task {
             model.refreshMemoryDetails()
             stress.refreshProcessMemory()
+            model.refreshDuskieMemory()
         }
-        .onReceive(model.$memorySnapshot) { _ in stress.refreshProcessMemory() }
+        .onReceive(model.$memorySnapshot) { _ in
+            stress.refreshProcessMemory()
+            model.refreshDuskieMemory()
+        }
         .onDisappear { stress.clear() }
         .onChange(of: scenePhase) { phase in
             if phase == .active {

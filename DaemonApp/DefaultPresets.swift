@@ -215,7 +215,7 @@ struct DaemonDescriptions {
         "com.apple.sharing.airdropui": "AirDrop user interface and incoming-transfer notification host. The separate Allow AirDrop switch disables sending and receiving; sharingd remains enabled for the normal Share Sheet.",
         "com.apple.ShortcutsUI": "Hosts interactive Shortcuts interfaces. Enable it for prompts and other Shortcuts UI; it is separate from the core siriactionsd and linkd services.",
         "com.apple.PaperBoard": "Wallpaper-related UI host exporting com.apple.paperboard.services. Wallpaper editing can become unavailable when disabled; basic Camera, Home and sharing were checked with it off.",
-        "com.apple.AccessibilityUIServer": "Hosts system accessibility user interfaces. This optional per-device override is separate from disabling accessibility features in Settings.",
+        "com.apple.AccessibilityUIServer": "Hosts system accessibility user interfaces, shared by features including AssistiveTouch and spoken-content controls. Optional and default Off for this profile; restore through the relevant accessibility group before use. The Settings feature switch is separate. Background Sounds/heard is managed independently.",
         "com.apple.PosterBoard": "Hosts wallpaper and Lock Screen poster extensions. In the tested iOS 16 profile, Lock Screen/Notification Center media controls also required PosterBoard together with liveactivitiesd. With liveactivitiesd alone, the panel flashed/turned grey and MediaRemoteUI repeatedly crashed with CALayerInvalidGeometry; enabling PosterBoard and restarting userspace restored clear controls with PaperBoard off. Shared by Wallpaper and Lock Screen media groups. Optional, default Off; restart userspace after changes.",
         "com.apple.ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
         "ABDatabaseDoctor": "Contacts database repair helper (Guideline: yes)",
@@ -1153,8 +1153,8 @@ struct DaemonDescriptions {
         "transparencyStaticKey": "Static key/support component for transparency services (Guideline: no)",
         "com.apple.transparencyd": "Apple transparency verification daemon for security features (Guideline: no)",
         "transparencyd": "Apple transparency verification daemon for security features (Guideline: no)",
-        "com.apple.triald": "Feature-flag and experimentation daemon (Guideline: yes)",
-        "triald": "Feature-flag and experimentation daemon (Guideline: yes)",
+        "com.apple.triald": "Trial feature/experiment and asset-delivery service. Siri US English Voice 5 (Quinn) requested its Trial asset but stayed idle while triald was disabled; enabling/loading only triald started the download without reboot and the user confirmed the voice works. Optional/default Off; enable through Siri or spoken-content groups when needed.",
+        "triald": "Trial feature/experiment and asset-delivery service. Siri US English Voice 5 (Quinn) requested its Trial asset but stayed idle while triald was disabled; enabling/loading only triald started the download without reboot and the user confirmed the voice works. Optional/default Off; enable through Siri or spoken-content groups when needed.",
         "com.apple.trustd": "Certificate trust-evaluation daemon (Guideline: NO)",
         "trustd": "Certificate trust-evaluation daemon (Guideline: NO)",
         "com.apple.tvremoted": "Apple TV Remote support daemon (Guideline: if-unused)",
@@ -1256,7 +1256,7 @@ final class DefaultPresets: ObservableObject {
     // Saved default overrides: true = disabled; false = allow demand launching.
     static let builtinDefaults: [String: Bool] = [
         "com.apple.PosterBoard": true,
-        "com.apple.AccessibilityUIServer": false,
+        "com.apple.AccessibilityUIServer": true,
         "com.apple.PaperBoard": true,
         "com.apple.ShortcutsUI": true,
         "com.apple.sharing.airdropui": true,

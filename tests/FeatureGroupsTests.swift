@@ -52,6 +52,18 @@ struct FeatureGroupsTests {
         })
         precondition(OverrideServices.menuTitles.contains("SpringBoard interfaces"))
         precondition(Set(OverrideServices.menuTitles).count == OverrideServices.menuTitles.count)
+        let siriAssets = OverrideServices.groups.first { $0.title == "Siri" }!
+        precondition(siriAssets.actionLabels(enable: true).contains("com.apple.triald"))
+        precondition(DefaultPresets.builtinDefaults["com.apple.triald"] == true)
+        precondition(DefaultPresets.builtinDefaults["com.apple.AccessibilityUIServer"] == true)
+        let accessibility = OverrideServices.groups.first { $0.title == "Accessibility and captions" }!
+        precondition(accessibility.labels.contains("com.apple.assistivetouchd"))
+        precondition(!accessibility.actionLabels(enable: false).contains("com.apple.accessibility.heard"))
+        precondition(DefaultPresets.builtinDefaults["com.apple.accessibility.heard"] == false)
+        for title in ["CarPlay", "Handoff", "Apple Watch helpers", "Nearby accessories and AirPods"] {
+            let feature = OverrideServices.groups.first { $0.title == title }!
+            precondition(feature.labels.allSatisfy { DefaultPresets.builtinDefaults[$0] == true })
+        }
         let dictation = OverrideServices.groups.first { $0.title == "Dictation" }!
         let siriOnly = OverrideServices.groups.first { $0.title == "Siri" }!
         let speech: Set<String> = ["com.apple.assistantd", "com.apple.corespeechd"]

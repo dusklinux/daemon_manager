@@ -1,5 +1,45 @@
 # Daemon Manager
 
+## Voice downloads, service selection and session apply — v1.0.35
+
+US English Siri Voice 5 (Quinn) downloaded and worked after restoring only
+`com.apple.triald`. Its request used Trial asset delivery, not only mobileassetd.
+Trial remains optional/default Off; Siri On now restores it. The description records
+this dependency rather than treating Trial as experimentation alone.
+
+Services and Critical now offer Select, Select Visible, Clear, and explicit On/Off
+for every selected service regardless of its previous state or current search
+filter. The existing Critical-Off confirmation is retained. Apply results have one
+inline action row: Apply Now, Restart Userspace, Dismiss. Apply Now attempts the
+saved jobs' enable/bootstrap or disable/bootout and verifies registration with a
+bounded settle wait; failures retain the saved override and report partial failure.
+It does not guarantee every existing client reconnects. Userspace restart remains
+available; it is never triggered automatically. Reopen Tools → Execution Log to
+reach the result controls after dismissal. Pending job actions last for this app
+process; persisted launchd overrides remain authoritative.
+
+The manual 100 MiB memory controls are unchanged. An additional two-GiB control
+uses the installed Duskie worker, preserving its separate-process memory allowance,
+random page fill, progress/status protocol and explicit release. It does not
+require twenty taps or put that allocation inside Daemon Manager. Duskie must be
+installed with its memory worker; other installations retain the manual controls.
+Worker memory remains allocated across app switching/sheet dismissal until Release.
+This is memory pressure, not extra RAM or a demonstrated multitasking improvement.
+
+Accessibility now includes AssistiveTouch and other optional helpers, with focused
+AssistiveTouch and Speak Screen groups. AccessibilityUIServer changes to default
+Off; Background Sounds/heard stays On in its separate group. The 11-job optional
+accessibility Off batch was applied live and the owner confirmed typing, app
+switching, contact info, SMS and Background Sounds still work. An initial immediate
+host-unload check raced asynchronous deregistration; later state was absent, which
+motivated the bounded verification wait. This is a short functional check.
+
+CarPlay, Handoff, Watch helpers and nearby/AirPods helpers have discoverable groups;
+their optional jobs already default Off. Shared Bluetooth, discovery/sharing,
+registry, audio and core UI prerequisites retain their classifications. There are
+513 targets, 329 Off / 184 On, including 58 Critical On. Apply Defaults was not used
+on the phone; the owner's manually enabled Siri services are preserved.
+
 ## SMS/contact recovery and regular-use defaults — 2026-10-21, v1.0.34 installed
 
 `com.apple.accessibility.heard` and `com.apple.DragUI.druid` now default **On**

@@ -3,6 +3,7 @@ import io
 import pathlib
 import subprocess
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / 'DaemonApp/NativeOverrides.swift').read_text().split('#"""', 1)[1].split('"""#', 1)[0]
@@ -90,6 +91,16 @@ class LiveFeatureTests(unittest.TestCase):
         code, _, output = self.run_case('disable', True, command_error=1)
         self.assertEqual(code, 1)
         self.assertNotIn('Feature overrides and loaded job states verified.', output)
+
+    def test_async_bootout_registration_is_allowed_to_settle(self):
+        namespace = {}
+        exec(compile(SCRIPT, 'NativeOverrides', 'exec'), namespace)
+        namespace['apply'] = lambda *args, **kwargs: 0
+        registration = iter([True, True, False])
+        namespace['loaded'] = lambda target: next(registration)
+        namespace['run'] = lambda args: subprocess.CompletedProcess(args, 0, '', '')
+        with unittest.mock.patch('time.sleep'), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(namespace['apply_live']([['feature', 'disable', 'system', '/feature.plist']]), 0)
 
     def test_unreadable_job_is_not_treated_as_unloaded(self):
         code, calls, _ = self.run_case('enable', True, print_error=1)

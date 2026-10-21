@@ -15,13 +15,12 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Live status banner
-            if let status = model.statusMessage {
+            if let status = model.statusMessage, !model.showLogConsole {
                 HStack {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
                     Text(status).font(.caption).foregroundColor(.primary)
                     Spacer()
-                    Button("Dismiss") { model.statusMessage = nil }
-                        .font(.caption2.bold())
+                    ApplyResultActions()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -141,6 +140,9 @@ struct LiveServicesView: View {
     @State private var searchText = ""
     @State private var showMemoryDetails = false
     @State private var filter: FilterType = .all
+    @State private var selecting = false
+    @State private var selected: Set<String> = []
+    @State private var confirmSelectedOff = false
     var criticalOnly = false
     let onSafetyPrompt: (LaunchdService, Bool) -> Void
 
@@ -213,6 +215,19 @@ struct LiveServicesView: View {
                     .accessibilityLabel("Switch theme")
                 }
 
+                HStack {
+                    Button(selecting ? "Done" : "Select") {
+                        selecting.toggle()
+                        if !selecting { selected.removeAll() }
+                    }
+                    if selecting {
+                        Button("Select Visible") { selected.formUnion(filteredServices.map(\.id)) }
+                        Button("Clear") { selected.removeAll() }
+                        Spacer()
+                        Text("\(selected.count) selected").font(.caption)
+                    }
+                }.font(.subheadline)
+
                 Picker("Filter", selection: $filter) {
                     ForEach(FilterType.allCases, id: \.self) { f in
                         Text(badgeTitle(for: f)).tag(f)
@@ -253,12 +268,43 @@ struct LiveServicesView: View {
                 .listStyle(.plain)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if selecting {
+                HStack {
+                    Text("\(selected.count) selected")
+                    Spacer()
+                    Button("On") { applySelected(enable: true) }
+                    Button("Off") {
+                        if selectedServices.contains(where: { SafetyManager.requiresWarning($0.label) }) {
+                            confirmSelectedOff = true
+                        } else { applySelected(enable: false) }
+                    }
+                }
+                .buttonStyle(.bordered).padding()
+                .background(Color(UIColor.secondarySystemBackground))
+                .disabled(selectedServices.isEmpty || !selectedServices.allSatisfy { model.canToggle($0) })
+            }
+        }
+        .alert("Disable selected critical services?", isPresented: $confirmSelectedOff) {
+            Button("Disable", role: .destructive) { applySelected(enable: false) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("The selection includes services with keep-enabled warnings. Their dependent system functions can stop working.")
+        }
         .sheet(isPresented: $showMemoryDetails) {
             MemoryDetailsView()
                 .environmentObject(model)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private var selectedServices: [LaunchdService] {
+        services.filter { selected.contains($0.id) }
+    }
+
+    private func applySelected(enable: Bool) {
+        model.applySelectedServices(selectedServices, enable: enable)
     }
 
     private var ramColor: Color {
@@ -272,7 +318,18 @@ struct LiveServicesView: View {
 
     private func serviceRows(_ list: [LaunchdService]) -> some View {
         ForEach(list) { service in
-            LiveServiceRow(
+            HStack {
+                if selecting {
+                    Button {
+                        if !selected.insert(service.id).inserted { selected.remove(service.id) }
+                    } label: {
+                        Image(systemName: selected.contains(service.id) ? "checkmark.circle.fill" : "circle")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Select \(service.label)")
+                    .accessibilityValue(selected.contains(service.id) ? "Selected" : "Not selected")
+                }
+                LiveServiceRow(
                 service: service,
                 targetDisabled: presets.targetState(for: service.label),
                 onToggle: { enable in
@@ -282,7 +339,8 @@ struct LiveServicesView: View {
                         model.toggleDaemon(service, enable: enable)
                     }
                 }
-            )
+                )
+            }
         }
     }
 
@@ -827,8 +885,7 @@ struct ConsoleLogView: View {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
-                Button("Dismiss") { model.showLogConsole = false }
-                    .font(.caption.bold())
+                ApplyResultActions()
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -849,5 +906,21 @@ struct ConsoleLogView: View {
                 }
             }
         }
+    }
+}
+
+struct ApplyResultActions: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        HStack(spacing: 12) {
+            Button("Apply Now") { model.applyPendingSessionChanges() }
+                .disabled(model.pendingSessionChangeCount == 0 || model.isApplyingConfig)
+            Button("Restart Userspace") { model.userspaceReboot() }
+                .disabled(model.isApplyingConfig)
+            Button("Dismiss") {
+                model.statusMessage = nil
+                model.showLogConsole = false
+            }
+        }.font(.caption.bold()).lineLimit(1).minimumScaleFactor(0.75)
     }
 }

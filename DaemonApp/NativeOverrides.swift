@@ -1,10 +1,11 @@
 import Foundation
 
 // Compatible with the Python 3.9 runtime verified on the target iPhone.
-// launchctl owns persistence; only the tested feature catalog supports live loading.
+// launchctl owns persistence. Automatic live actions use the tested feature catalog;
+// explicit Apply Now also attempts the saved batch with registration verification.
 enum NativeOverrides {
     static let script = #"""
-import base64, json, os, re, subprocess, sys
+import base64, json, os, re, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 
 PLIST = "/var/db/com.apple.xpc.launchd/disabled.plist"
@@ -63,7 +64,7 @@ def loaded(target):
     raise RuntimeError("Cannot read job state: " + (result.stderr + result.stdout).strip())
 
 def apply_live(operations):
-    # Used only for the tested feature hosts, never core dependency batches.
+    # Also used for explicit Apply Now; failed jobs retain saved overrides for restart.
     if apply([item[:3] for item in operations], announce=False):
         return 1
     failed = False
@@ -79,8 +80,12 @@ def apply_live(operations):
                 result = None
             if result is not None and result.returncode:
                 raise RuntimeError((result.stderr + result.stdout).strip())
-            if loaded(target) != (action == "enable"):
-                raise RuntimeError("Loaded job state did not match the requested feature state")
+            for attempt in range(21):
+                if loaded(target) == (action == "enable"):
+                    break
+                if attempt == 20:
+                    raise RuntimeError("Loaded job state did not match the requested feature state")
+                time.sleep(0.1)
             print("[live] " + label + " " + action + " verified", flush=True)
         except (RuntimeError, subprocess.TimeoutExpired) as error:
             failed = True

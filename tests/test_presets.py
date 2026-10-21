@@ -39,7 +39,7 @@ class PresetTests(unittest.TestCase):
         self.assertEqual({label for label, action in raw_actions.items() if action == 'NO'},
                          set(labels) & set(builtin), 'Config and Critical UI must agree in both directions')
         for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
-                      'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'AccessibilityUIServer', 'pluginkit.pkd'):
+                      'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'pluginkit.pkd'):
             self.assertIs(builtin['com.apple.' + label], False)
 
     def test_recommendations_are_enabled_and_separate_from_critical(self):

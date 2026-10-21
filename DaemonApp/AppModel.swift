@@ -56,6 +56,8 @@ final class AppModel: ObservableObject {
     private var pressureRevision = 0
     @Published var isDarkTheme = true
     @Published var errorMessage: String?
+    @Published private(set) var pendingSessionChangeCount = 0
+    private var pendingSessionOperations: [DisabledServiceKey: (service: LaunchdService, disable: Bool)] = [:]
     @Published var statusMessage: String?
     
     // Default to 2345 matching user device
@@ -79,6 +81,44 @@ final class AppModel: ObservableObject {
     @Published private(set) var isChangingAirDrop = false
     @Published private(set) var springBoardUIState: SpringBoardUIState?
     @Published private(set) var springBoardUIError: String?
+
+    @Published private(set) var duskMemoryStatus: DuskieMemoryStatus?
+    @Published private(set) var duskMemoryError: String?
+    @Published private(set) var isChangingDuskieMemory = false
+    var hasDuskieMemoryWorker: Bool {
+        FileManager.default.isExecutableFile(atPath: "/var/jb/usr/libexec/duskie-control")
+    }
+    private var isReadingDuskieMemory = false
+
+    func refreshDuskieMemory() {
+        guard !isReadingDuskieMemory, !isChangingDuskieMemory else { return }
+        isReadingDuskieMemory = true
+        DispatchQueue.global(qos: .utility).async {
+            let result = Result { try DuskieMemoryStatus.read() }
+            DispatchQueue.main.async {
+                self.isReadingDuskieMemory = false
+                switch result {
+                case .success(let status): self.duskMemoryStatus = status; self.duskMemoryError = nil
+                case .failure(let error): self.duskMemoryStatus = nil; self.duskMemoryError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func setDuskieMemory(enabled: Bool) {
+        guard hasDuskieMemoryWorker, !isChangingDuskieMemory else { return }
+        isChangingDuskieMemory = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = self.posixRunSync(executable: "/var/jb/usr/libexec/duskie-control",
+                                          args: [enabled ? "memory-start" : "memory-stop"], trackProcess: false)
+            let status = try? DuskieMemoryStatus.read()
+            DispatchQueue.main.async {
+                self.isChangingDuskieMemory = false
+                self.duskMemoryStatus = status
+                self.duskMemoryError = result.exitCode == 0 ? nil : "Worker command failed (\(result.exitCode)): \(result.output)"
+            }
+        }
+    }
 
     private var currentPid: pid_t? = nil
     private var disabledServices: Set<DisabledServiceKey>?
@@ -317,12 +357,34 @@ if rc == 0:
             self.refreshState {
                 DispatchQueue.main.async {
                     self.isProcessing.remove(service.id)
+                    self.recordSessionChanges([(service: service, disable: !enable)], live: OverrideServices.labels.contains(service.label))
                     self.statusMessage = OverrideServices.labels.contains(service.label)
                         ? "Feature override and loaded job state verified."
-                        : "Override saved. Restart userspace to apply the process change fully."
+                        : "Override saved. Choose Apply Now for this session or Restart Userspace."
                 }
             }
         }
+    }
+
+    private func recordSessionChanges(_ operations: [(service: LaunchdService, disable: Bool)], live: Bool) {
+        for operation in operations {
+            guard let domain = operation.service.domain else { continue }
+            let key = DisabledServiceKey(domain: domain, label: operation.service.label)
+            if live { pendingSessionOperations.removeValue(forKey: key) }
+            else { pendingSessionOperations[key] = operation }
+        }
+        pendingSessionChangeCount = pendingSessionOperations.count
+    }
+
+    func applySelectedServices(_ services: [LaunchdService], enable: Bool) {
+        guard disabledServices != nil else { return }
+        let operations = services.filter { $0.domain != nil }.map { (service: $0, disable: !enable) }
+        executeNativeBatch(operations: operations, title: "Selected services: \(enable ? "On" : "Off")")
+    }
+
+    func applyPendingSessionChanges() {
+        let operations = pendingSessionOperations.values.sorted { $0.service.id < $1.service.id }
+        executeNativeBatch(operations: operations, title: "Applying saved changes now", live: true)
     }
 
     // Apply changed builtin or explicitly customized targets.
@@ -418,16 +480,22 @@ if rc == 0:
                     self.refreshState {
                         DispatchQueue.main.async {
                             self.isApplyingConfig = false
+                            if exitCode != 0 {
+                                self.recordSessionChanges(operations.filter {
+                                    self.isDisabled($0.service) == $0.disable
+                                }, live: false)
+                            }
                             completion?(exitCode == 0)
                         }
                     }
                     if exitCode == 0 {
+                        self.recordSessionChanges(operations, live: live)
                         if controlCount > 0 {
-                            self.statusMessage = "\(operations.count) service overrides and \(controlCount) feature controls saved. Restart userspace to apply process changes fully."
+                            self.statusMessage = "\(operations.count) service overrides and \(controlCount) feature controls saved. Apply Now handles jobs; interface changes need respring or userspace restart."
                         } else {
                             self.statusMessage = live
                                 ? "\(total) feature overrides and loaded jobs verified. Respring if a client retained its previous state."
-                                : "\(total) overrides saved. Restart userspace to apply process changes fully."
+                                : "\(total) overrides saved. Choose Apply Now or Restart Userspace."
                         }
                     } else {
                         self.statusMessage = nil

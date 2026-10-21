@@ -32,6 +32,8 @@ jobs:
           /tmp/daemon-elevation-tests
           swiftc -O DaemonApp/MemoryStatistics.swift DaemonApp/MemoryStress.swift tests/MemoryStressTests.swift -o /tmp/daemon-stress-tests
           /tmp/daemon-stress-tests
+          swiftc DaemonApp/DuskieMemory.swift tests/DuskieMemoryTests.swift -o /tmp/daemon-duskie-memory-tests
+          /tmp/daemon-duskie-memory-tests
 
       - name: Generate Project & Compile
         run: |
@@ -80,8 +82,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.34
+          tag_name: v1.0.35
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.34"
-          body: "Background Sounds and drag and drop default On, with separate optional feature groups. CommunicationsFilter sync defaults On and is restored by relevant account/messaging groups after isolated SMS/contact-detail recovery. Existing explicit custom targets are preserved; installation does not apply defaults. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.35"
+          body: "Siri voice downloads restore Trial; service multiselection; Apply Now, Restart Userspace and one Dismiss; optional Duskie 2 GiB worker control; expanded accessibility, Speak Screen, CarPlay, Handoff and accessory groups. Accessibility UI defaults Off; Background Sounds stays On. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
