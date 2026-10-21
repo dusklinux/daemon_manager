@@ -42,6 +42,13 @@ registry, audio and core UI prerequisites retain their classifications. There ar
 513 targets, 329 Off / 184 On, including 58 Critical On. Apply Defaults was not used
 on the phone; the owner's manually enabled Siri services are preserved.
 
+Deployment: **v1.0.38/build 39** is installed through TrollStore Lite.
+[Actions 39610063658](https://github.com/dusklinux/daemon_manager/actions/runs/39610063658)
+passed 34 Python tests, native Swift checks and the signed iOS build. Installed
+version/build/source and release IPA SHA256 matched. App/Duskie preferences and
+clipboard content remained unchanged. New physical UI checks are left for the owner;
+see [the audit](audit/2026-10-21-voice-ui.md).
+
 ## SMS/contact recovery and regular-use defaults — 2026-10-21, v1.0.34 installed
 
 `com.apple.accessibility.heard` and `com.apple.DragUI.druid` now default **On**
