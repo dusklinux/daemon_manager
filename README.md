@@ -1,5 +1,15 @@
 # Daemon Manager
 
+## Disk Health Metrics & Verified Unit Conversion — 2026-10-21, v1.0.33
+
+Empirically resolved the unit ambiguity in Apple Storage Processor (ASP) NAND health reports (`asptool_snapshot.log`). Controlled synchronous 64 MiB payload writes verified against live kernel `IOBlockStorageDriver` counters confirm that `hostWrites`, `nandWrites`, `hostReads`, `nandReads`, and `validLbas` are measured in **4,096-byte (4 KB) Logical Blocks (Sectors / LBAs)**. See full empirical documentation in [NAND Metrics Verification](docs/NAND_METRICS_VERIFICATION.md).
+
+- **Verified Formatted Metrics:** `hostWrites` and `nandWrites` now display primarily in formatted Terabytes / Gigabytes (e.g. 75.27 TB host, 97.53 TB NAND on a 256 GB drive), with tap-to-inspect breakdowns showing exact bytes, binary GiB, and raw 4 KB sectors.
+- **Write Amplification Factor (WAF):** Added live calculation of `nandWrites ÷ hostWrites` (e.g. 1.295× / ~1.30×), directly reflecting TLC Flash Translation Layer (FTL) efficiency.
+- **Cycle Ratings & Wear:** Added dual erase cycle display comparing current average erase cycles to rated limits (`averageTLCPECycles / maxNativeEndurance` and `averageSLCPECycles / maxSLCEndurance`), along with percent used and remaining wear for TLC and SLC partitions.
+- **Active User Storage & Defect Tracking:** Exposed `validLbas` (active user data mapped on NAND), plus hardware integrity metrics (`smartCritWarnings`, `numGrownBad`, `numRetiredBlocks`, `ueccReads`).
+- **Read & Boot Counters:** Added optional display for `hostReads`, `nandReads`, read amplification, `boots`, `shutdowns`, and `uncleanBoots` when available in the snapshot.
+
 ## Auto-Lock policy recommendation — 2026-10-21, v1.0.32
 
 `com.apple.managedconfiguration.profiled` now defaults **On** (`no` / builtin

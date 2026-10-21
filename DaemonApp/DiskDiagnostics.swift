@@ -4,6 +4,60 @@ struct DiskHealthReport: Decodable {
     let path: String
     let sampledAt: Double
     let values: [String: UInt64]
+
+    static let bytesPerSector: UInt64 = 4096
+
+    func bytes(for key: String) -> UInt64? {
+        guard let sectors = values[key] else { return nil }
+        return sectors * Self.bytesPerSector
+    }
+
+    func formattedStorage(for key: String) -> String? {
+        guard let b = bytes(for: key) else { return nil }
+        return Self.formatStorage(b)
+    }
+
+    var writeAmplification: Double? {
+        guard let host = values["hostWrites"], host > 0,
+              let nand = values["nandWrites"] else { return nil }
+        return Double(nand) / Double(host)
+    }
+
+    var readAmplification: Double? {
+        guard let host = values["hostReads"], host > 0,
+              let nand = values["nandReads"] else { return nil }
+        return Double(nand) / Double(host)
+    }
+
+    static func formatStorage(_ bytes: UInt64) -> String {
+        let tb = Double(bytes) / 1_000_000_000_000.0
+        if tb >= 1.0 {
+            return String(format: "%.2f TB", tb)
+        }
+        let gb = Double(bytes) / 1_000_000_000.0
+        if gb >= 1.0 {
+            return String(format: "%.2f GB", gb)
+        }
+        let mb = Double(bytes) / 1_000_000.0
+        if mb >= 1.0 {
+            return String(format: "%.2f MB", mb)
+        }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .decimal)
+    }
+
+    static func detailedBreakdown(_ bytes: UInt64, rawSectors: UInt64) -> String {
+        let tb = Double(bytes) / 1_000_000_000_000.0
+        let gb = Double(bytes) / 1_000_000_000.0
+        let gib = Double(bytes) / 1_073_741_824.0
+        let sectorsFormatted = rawSectors.formatted(.number.locale(Locale(identifier: "en_US")))
+        let bytesFormatted = bytes.formatted(.number.locale(Locale(identifier: "en_US")))
+        return """
+        • Decimal: \(String(format: "%.2f TB", tb)) (\(String(format: "%.2f GB", gb)))
+        • Binary: \(String(format: "%.2f GiB", gib))
+        • Exact bytes: \(bytesFormatted) B
+        • Raw sectors: \(sectorsFormatted) (4 KB / sector)
+        """
+    }
 }
 
 enum DiskDiagnostics {
@@ -15,7 +69,8 @@ OVERRIDES_PATH = '/var/db/com.apple.xpc.launchd/disabled.plist'
 ARCHIVE_ROOT = '/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs/sysdiagnose'
 FIELDS = ('percentUsed', 'slcPercentUsed', 'averageTLCPECycles', 'averageSLCPECycles',
           'maxNativeEndurance', 'maxSLCEndurance', 'hostWrites', 'nandWrites',
-          'smartCritWarnings', 'numGrownBad', 'numRetiredBlocks', 'ueccReads')
+          'hostReads', 'nandReads', 'validLbas', 'smartCritWarnings',
+          'numGrownBad', 'numRetiredBlocks', 'ueccReads', 'boots', 'shutdowns', 'uncleanBoots')
 
 def parse_snapshot(data):
     # ASP logs contain NUL-padded text as well as binary payloads.

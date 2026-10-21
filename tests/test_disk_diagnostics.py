@@ -23,6 +23,19 @@ class DiskDiagnosticsTests(unittest.TestCase):
         data = b'fwUpdatesPercentUsed: 167\npercentUsed: 9\nhostWrites: 123\npercentUsed: 10\n'.replace(b'', b'\0')
         self.assertEqual(self.ns['parse_snapshot'](data), {'percentUsed': 10, 'hostWrites': 123})
 
+    def test_extended_storage_and_boot_counters(self):
+        data = (b'hostWrites: 1000\nnandWrites: 1300\nhostReads: 5000\nnandReads: 5200\n'
+                b'validLbas: 5400\nboots: 3300\nshutdowns: 2900\nuncleanBoots: 400\n')
+        res = self.ns['parse_snapshot'](data)
+        self.assertEqual(res['hostWrites'], 1000)
+        self.assertEqual(res['nandWrites'], 1300)
+        self.assertEqual(res['hostReads'], 5000)
+        self.assertEqual(res['nandReads'], 5200)
+        self.assertEqual(res['validLbas'], 5400)
+        self.assertEqual(res['boots'], 3300)
+        self.assertEqual(res['shutdowns'], 2900)
+        self.assertEqual(res['uncleanBoots'], 400)
+
     def test_missing_fields_are_not_zeroes(self):
         self.assertEqual(self.ns['parse_snapshot'](b'percentUsed: 0\n'), {'percentUsed': 0})
         with self.assertRaises(RuntimeError):
