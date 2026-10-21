@@ -1,6 +1,6 @@
 # Daemon Manager
 
-## Voice downloads, service selection and session apply — v1.0.36
+## Voice downloads, service selection and session apply — v1.0.37
 
 US English Siri Voice 5 (Quinn) downloaded and worked after restoring only
 `com.apple.triald`. Its request used Trial asset delivery, not only mobileassetd.
@@ -28,7 +28,8 @@ This is memory pressure, not extra RAM or a demonstrated multitasking improvemen
 
 Accessibility now includes AssistiveTouch and other optional helpers, with focused
 AssistiveTouch and Speak Screen groups. AccessibilityUIServer changes to default
-Off; Background Sounds/heard stays On in its separate group. The 11-job optional
+Off, including inherited legacy targets; explicit custom choices remain authoritative.
+Background Sounds/heard stays On in its separate group. The 11-job optional
 accessibility Off batch was applied live and the owner confirmed typing, app
 switching, contact info, SMS and Background Sounds still work. An initial immediate
 host-unload check raced asynchronous deregistration; later state was absent, which

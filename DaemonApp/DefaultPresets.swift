@@ -1794,6 +1794,7 @@ final class DefaultPresets: ObservableObject {
                                     "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
                                     "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon", "com.apple.contextstored"]
         let previousBuiltin: [String: Bool] = [
+            "com.apple.AccessibilityUIServer": false,
             "com.apple.managedconfiguration.profiled": true,
             "bootps": false,
             "com.apple.progressd": false, "com.apple.ndoagent": false, "com.apple.AssetCacheLocatorService": false,

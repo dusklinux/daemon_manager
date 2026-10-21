@@ -56,6 +56,9 @@ struct FeatureGroupsTests {
         precondition(siriAssets.actionLabels(enable: true).contains("com.apple.triald"))
         precondition(DefaultPresets.builtinDefaults["com.apple.triald"] == true)
         precondition(DefaultPresets.builtinDefaults["com.apple.AccessibilityUIServer"] == true)
+        precondition(DefaultPresets.migratedLegacyDefaults(["com.apple.AccessibilityUIServer": false]).isEmpty,
+                     "The inherited legacy On target must adopt the new optional Off default")
+        precondition(DefaultPresets.migratedLegacyDefaults(["com.apple.AccessibilityUIServer": true])["com.apple.AccessibilityUIServer"] == true)
         let accessibility = OverrideServices.groups.first { $0.title == "Accessibility and captions" }!
         precondition(accessibility.labels.contains("com.apple.assistivetouchd"))
         precondition(!accessibility.actionLabels(enable: false).contains("com.apple.accessibility.heard"))
