@@ -118,6 +118,7 @@ struct SafetyManager {
     // A recommendation is not evidence of a boot loop or CPU/crash loop.
     // Moving a label here does not establish that its Off state is safe.
     static let recommendedEnabled: [String: String] = [
+        "com.apple.managedconfiguration.profiled": "Keep enabled for native Auto-Lock and Low Power Mode policy updates, as well as configuration profiles and managed feature settings. On iOS 16.7.16, disabling profiled left a stale 30-second battery-saver restriction with Low Power Mode off, greyed out Auto-Lock, and made setting writes fail. Enabling/loading this service cleared the stale restriction. Recommended On for functionality, not Critical; manual Off remains available.",
         "com.apple.contextstored": "Keep enabled for CoreDuet context and background scheduling. It exports com.apple.coreduetd.context. With this job off after a userspace restart, Photos/DAS context requests failed and DAS refused the waiting photo upload with zero observed Wi-Fi quality and insufficient data budget after the restart-delay policy cleared. Photos sync passed in the restored profile; the Off comparison reproduced the stall. This is a tested scheduling dependency, not only a Siri suggestions service.",
         "com.apple.SecureBackupDaemon": "Keep enabled for protected iCloud key recovery/escrow. After restoring the cloud-key syncing job, its key synchronization still failed at FetchMetaData with an explicit missing com.apple.SecureBackupDaemon XPC endpoint. Restoring this job and retrying changed protected key synchronization to success in the logs, and the user completed Settings verification with its notice clearing. Full file/photo sync must still be verified separately. Individual disabling remains available when this functionality is unused.",
         "com.apple.protectedcloudstorage.protectedcloudkeysyncing": "Keep enabled for protected iCloud encryption-key synchronization. With this job disabled, the tested CloudDocs/CloudKit profile failed user-key synchronization and encrypted zone preparation with an explicit missing-service XPC error. This is a logged cloud dependency failure, not a bootloop claim. Individual disabling remains available when protected cloud functionality is unused.",
@@ -783,8 +784,8 @@ struct DaemonDescriptions {
         "mDNSResponderHelper": "Helper for Bonjour/mDNS networking (Guideline: NO)",
         "com.apple.managedconfiguration.passcodenagd": "Managed passcode compliance prompt service (Guideline: if-unused)",
         "managedconfiguration.passcodenagd": "Managed passcode compliance prompt service (Guideline: if-unused)",
-        "com.apple.managedconfiguration.profiled": "Configuration profile and managed-policy daemon (Guideline: if-unused)",
-        "managedconfiguration.profiled": "Configuration profile and managed-policy daemon (Guideline: if-unused)",
+        "com.apple.managedconfiguration.profiled": "Native configuration-profile and feature-policy service, including Auto-Lock and Low Power Mode restrictions. Disabled on iOS 16.7.16, it left a stale 30-second limit and blocked Auto-Lock edits; enabling/loading it repaired that path. Recommended On; manually switchable under Auto-Lock and configuration policy. Other device-management daemons are separate.",
+        "managedconfiguration.profiled": "Native configuration-profile and feature-policy service, including Auto-Lock and Low Power Mode restrictions. Disabled on iOS 16.7.16, it left a stale 30-second limit and blocked Auto-Lock edits; enabling/loading it repaired that path. Recommended On; manually switchable under Auto-Lock and configuration policy. Other device-management daemons are separate.",
         "com.apple.maps.destinationd": "Maps destination suggestions service (Guideline: if-unused)",
         "maps.destinationd": "Maps destination suggestions service (Guideline: if-unused)",
         "com.apple.maps.geocorrectiond": "Maps location-correction / feedback daemon (Guideline: if-unused)",
@@ -1551,7 +1552,7 @@ final class DefaultPresets: ObservableObject {
         "com.apple.mDNSResponderHelper": false,
         "com.apple.mDNSResponderHelper.reloaded": false,
         "com.apple.managedconfiguration.passcodenagd": true,
-        "com.apple.managedconfiguration.profiled": true,
+        "com.apple.managedconfiguration.profiled": false,
         "com.apple.maps.destinationd": true,
         "com.apple.matd": true,
         "com.apple.mdt": true,
@@ -1792,6 +1793,7 @@ final class DefaultPresets: ObservableObject {
                                     "com.apple.nehelper-embedded", "com.apple.mobile.lockdown", "com.apple.absd",
                                     "com.apple.cdpd", "com.apple.followupd", "com.apple.photos.ImageConversionService", "com.apple.photos.VideoConversionService", "com.apple.passd", "com.apple.SecureBackupDaemon", "com.apple.contextstored"]
         let previousBuiltin: [String: Bool] = [
+            "com.apple.managedconfiguration.profiled": true,
             "bootps": false,
             "com.apple.progressd": false, "com.apple.ndoagent": false, "com.apple.AssetCacheLocatorService": false,
             "com.apple.DataDetectorsSourceAccess": false, "com.apple.synapse.contentlinkingd": false, "com.apple.reversetemplated": false,

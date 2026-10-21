@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.31
+          tag_name: v1.0.32
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.31"
-          body: "Protect bluetoothd and BlueTool after isolated CPU/retry failures; keep shared CommCenter and AVConference prerequisites enabled in grouped Off actions. Bluetooth helpers now states its actual scope. Builtin Boolean targets remain unchanged; device audit details are in audit/2026-10-18.md. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.32"
+          body: "Recommend profiled On for native Auto-Lock and Low Power Mode policy. Add a dedicated manually switchable Auto-Lock and configuration policy group; keep it outside Critical. Defaults: 513 targets, 331 Off / 182 On, including 58 Critical On. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa

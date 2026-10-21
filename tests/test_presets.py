@@ -64,7 +64,7 @@ class PresetTests(unittest.TestCase):
                       'protectedcloudstorage.protectedcloudkeysyncing', 'SecureBackupDaemon',
                       'contextstored', 'accountsd', 'akd', 'adid', 'appleaccountd',
                       'BTServer.le', 'BTServer.avrcp', 'assetsd', 'sharingd', 'TextInput.kbd',
-                      'CommCenter', 'telephonyutilities.callservicesd'):
+                      'CommCenter', 'telephonyutilities.callservicesd', 'managedconfiguration.profiled'):
             key = 'com.apple.' + label
             self.assertIn(key, recommended)
             self.assertNotIn(key, critical)

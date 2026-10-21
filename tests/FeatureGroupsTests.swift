@@ -55,6 +55,18 @@ struct FeatureGroupsTests {
         precondition(!calls.actionLabels(enable: false).contains("com.apple.CommCenter"))
         precondition(calls.actionLabels(enable: true).contains("com.apple.CommCenter"))
         precondition(!SafetyManager.isCritical("com.apple.CommCenter"))
+        let policyLabel = "com.apple.managedconfiguration.profiled"
+        let policy = OverrideServices.groups.first { $0.title == "Auto-Lock and configuration policy" }!
+        precondition(policy.visibleLabels == [policyLabel])
+        precondition(policy.actionLabels(enable: true) == [policyLabel])
+        precondition(policy.actionLabels(enable: false) == [policyLabel], "Manual policy Off must remain available")
+        precondition(DefaultPresets.builtinDefaults[policyLabel] == false)
+        precondition(SafetyManager.recommendation(for: policyLabel) != nil)
+        precondition(SafetyManager.recommendation(for: "managedconfiguration.profiled") != nil)
+        precondition(!SafetyManager.isCritical(policyLabel) && !SafetyManager.requiresWarning(policyLabel))
+        precondition(!OverrideServices.labels.contains(policyLabel), "Policy changes follow the normal userspace-restart flow")
+        precondition(DefaultPresets.migratedLegacyDefaults([policyLabel: true])[policyLabel] == nil)
+        precondition(DefaultPresets.migratedLegacyDefaults([policyLabel: false])[policyLabel] == false)
         let critical = "com.apple.searchd"
         precondition(!SafetyManager.isCritical("com.apple.appleaccountd"))
         precondition(SafetyManager.recommendation(for: "com.apple.appleaccountd") != nil)
