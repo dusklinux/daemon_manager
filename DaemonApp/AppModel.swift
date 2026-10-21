@@ -58,6 +58,11 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var pendingSessionChangeCount = 0
     private var pendingSessionOperations: [DisabledServiceKey: (service: LaunchdService, disable: Bool)] = [:]
+    // Keep selections while the execution console replaces the tab content.
+    @Published var serviceSelection: Set<String> = []
+    @Published var criticalSelection: Set<String> = []
+    @Published var selectingServices = false
+    @Published var selectingCriticalServices = false
     @Published var statusMessage: String?
     
     // Default to 2345 matching user device

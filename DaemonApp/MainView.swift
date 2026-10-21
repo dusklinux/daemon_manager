@@ -140,8 +140,20 @@ struct LiveServicesView: View {
     @State private var searchText = ""
     @State private var showMemoryDetails = false
     @State private var filter: FilterType = .all
-    @State private var selecting = false
-    @State private var selected: Set<String> = []
+    private var selecting: Bool {
+        get { criticalOnly ? model.selectingCriticalServices : model.selectingServices }
+        nonmutating set {
+            if criticalOnly { model.selectingCriticalServices = newValue }
+            else { model.selectingServices = newValue }
+        }
+    }
+    private var selected: Set<String> {
+        get { criticalOnly ? model.criticalSelection : model.serviceSelection }
+        nonmutating set {
+            if criticalOnly { model.criticalSelection = newValue }
+            else { model.serviceSelection = newValue }
+        }
+    }
     @State private var confirmSelectedOff = false
     var criticalOnly = false
     let onSafetyPrompt: (LaunchdService, Bool) -> Void

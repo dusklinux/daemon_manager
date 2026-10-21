@@ -1,6 +1,6 @@
 # Daemon Manager
 
-## Voice downloads, service selection and session apply — v1.0.37
+## Voice downloads, service selection and session apply — v1.0.38
 
 US English Siri Voice 5 (Quinn) downloaded and worked after restoring only
 `com.apple.triald`. Its request used Trial asset delivery, not only mobileassetd.
