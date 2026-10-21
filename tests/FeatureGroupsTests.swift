@@ -20,6 +20,28 @@ struct FeatureGroupsTests {
         precondition(migrated["com.apple.ndoagent"] == true)
         precondition(migrated["com.apple.matd"] == true)
         precondition(migrated["com.apple.logd_helper"] == nil)
+        for (title, label) in [("Background sounds and hearing", "com.apple.accessibility.heard"),
+                               ("Drag and drop", "com.apple.DragUI.druid")] {
+            let feature = OverrideServices.groups.first { $0.title == title }!
+            precondition(DefaultPresets.builtinDefaults[label] == false)
+            precondition(feature.actionLabels(enable: true).contains(label))
+            precondition(feature.actionLabels(enable: false) == [label])
+            precondition(!SafetyManager.isCritical(label))
+            precondition(DefaultPresets.migratedLegacyDefaults([label: false])[label] == nil,
+                         "The old full-copy format inherited On for these jobs")
+            precondition(DefaultPresets.migratedLegacyDefaults([label: true])[label] == true,
+                         "An explicit legacy Off choice must remain explicit")
+        }
+        let filter = "com.apple.cmfsyncagent"
+        precondition(DefaultPresets.builtinDefaults[filter] == false)
+        precondition(SafetyManager.recommendation(for: filter) != nil)
+        precondition(!SafetyManager.isCritical(filter))
+        for title in ["Calls and SMS", "Messages and FaceTime", "Apple Account and settings sync"] {
+            let feature = OverrideServices.groups.first { $0.title == title }!
+            precondition(feature.actionLabels(enable: true).contains(filter))
+            precondition(!feature.actionLabels(enable: false).contains(filter),
+                         "Shared CommunicationsFilter queries must remain available on group Off")
+        }
         precondition(DefaultPresets.builtinDefaults["com.apple.bootpd"] == true,
                      "Apply Defaults uses the plist's declared job label, not its filename")
         precondition(DefaultPresets.builtinDefaults["com.apple.avconferenced"] == false)

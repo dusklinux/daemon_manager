@@ -80,8 +80,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.33
+          tag_name: v1.0.34
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.33"
-          body: "Empirically verified 4,096-byte (4 KB) sector unit for ASP NAND diagnostics. Display formatted Host/NAND writes in TB/GB, Write Amplification Factor (WAF), cycle progress ratings, valid active storage (validLbas), and extended read/boot counters. Includes technical verification reference in docs/NAND_METRICS_VERIFICATION.md. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v1.0.34"
+          body: "Background Sounds and drag and drop default On, with separate optional feature groups. CommunicationsFilter sync defaults On and is restored by relevant account/messaging groups after isolated SMS/contact-detail recovery. Existing explicit custom targets are preserved; installation does not apply defaults. Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
