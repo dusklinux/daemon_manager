@@ -20,23 +20,32 @@ struct FeatureGroupsTests {
         precondition(migrated["com.apple.ndoagent"] == true)
         precondition(migrated["com.apple.matd"] == true)
         precondition(migrated["com.apple.logd_helper"] == nil)
-        for (title, label) in [("Background sounds and hearing", "com.apple.accessibility.heard"),
-                               ("Drag and drop", "com.apple.DragUI.druid")] {
-            let feature = OverrideServices.groups.first { $0.title == title }!
-            precondition(DefaultPresets.builtinDefaults[label] == false)
-            precondition(feature.actionLabels(enable: true).contains(label))
-            precondition(feature.actionLabels(enable: false) == [label])
-            precondition(!SafetyManager.isCritical(label))
-            precondition(DefaultPresets.migratedLegacyDefaults([label: false])[label] == nil,
-                         "The old full-copy format inherited On for these jobs")
-            precondition(DefaultPresets.migratedLegacyDefaults([label: true])[label] == true,
-                         "An explicit legacy Off choice must remain explicit")
-        }
+
+        let hearingLabel = "com.apple.accessibility.heard"
+        let hearing = OverrideServices.groups.first { $0.title == "Background sounds and hearing" }!
+        precondition(DefaultPresets.builtinDefaults[hearingLabel] == false)
+        precondition(hearing.actionLabels(enable: true).contains(hearingLabel))
+        precondition(hearing.actionLabels(enable: false) == [hearingLabel])
+        precondition(!SafetyManager.isCritical(hearingLabel))
+        precondition(DefaultPresets.migratedLegacyDefaults([hearingLabel: false])[hearingLabel] == nil)
+        precondition(DefaultPresets.migratedLegacyDefaults([hearingLabel: true])[hearingLabel] == true)
+
+        let dragLabel = "com.apple.DragUI.druid"
+        let drag = OverrideServices.groups.first { $0.title == "Drag and drop" }!
+        precondition(DefaultPresets.builtinDefaults[dragLabel] == true)
+        precondition(drag.actionLabels(enable: true).contains(dragLabel))
+        precondition(drag.actionLabels(enable: false) == [dragLabel])
+        precondition(!SafetyManager.isCritical(dragLabel))
+        precondition(DefaultPresets.migratedLegacyDefaults([dragLabel: false])[dragLabel] == nil,
+                     "The old full-copy format inherited On for DragUI.druid")
+        precondition(DefaultPresets.migratedLegacyDefaults([dragLabel: true])[dragLabel] == true,
+                     "An explicit legacy Off choice must remain explicit")
+
         let filter = "com.apple.cmfsyncagent"
         precondition(DefaultPresets.builtinDefaults[filter] == false)
         precondition(SafetyManager.recommendation(for: filter) != nil)
         precondition(!SafetyManager.isCritical(filter))
-        for title in ["Calls and SMS", "Messages and FaceTime", "Apple Account and settings sync"] {
+        for title in ["Calls and telephony", "SMS and messaging", "Messages and FaceTime", "Apple Account and settings sync"] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(feature.actionLabels(enable: true).contains(filter))
             precondition(!feature.actionLabels(enable: false).contains(filter),
@@ -63,7 +72,10 @@ struct FeatureGroupsTests {
         precondition(accessibility.labels.contains("com.apple.assistivetouchd"))
         precondition(!accessibility.actionLabels(enable: false).contains("com.apple.accessibility.heard"))
         precondition(DefaultPresets.builtinDefaults["com.apple.accessibility.heard"] == false)
-        for title in ["CarPlay", "Handoff", "Apple Watch helpers", "Nearby accessories and AirPods"] {
+        for title in [
+            "CarPlay", "Handoff", "Apple Watch helpers", "Nearby accessories and AirPods",
+            "Apple Cloud Security and Recovery", "Background Sync and Data Caches", "Reset and Hardware Maintenance"
+        ] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(feature.labels.allSatisfy { DefaultPresets.builtinDefaults[$0] == true })
         }
@@ -91,16 +103,24 @@ struct FeatureGroupsTests {
         precondition(!bluetooth.visibleLabels.contains("com.apple.bluetoothd"))
         precondition(!bluetooth.actionLabels(enable: false).contains("com.apple.bluetoothd"))
         precondition(bluetooth.actionLabels(enable: true).contains("com.apple.bluetoothd"))
-        let calls = OverrideServices.groups.first { $0.title == "Calls and SMS" }!
-        precondition(!calls.actionLabels(enable: false).contains("com.apple.CommCenter"))
-        precondition(calls.actionLabels(enable: true).contains("com.apple.CommCenter"))
+        for title in ["Calls and telephony", "SMS and messaging"] {
+            let group = OverrideServices.groups.first { $0.title == title }!
+            precondition(!group.actionLabels(enable: false).contains("com.apple.CommCenter"))
+            precondition(group.actionLabels(enable: true).contains("com.apple.CommCenter"))
+        }
         precondition(!SafetyManager.isCritical("com.apple.CommCenter"))
+        let calls = OverrideServices.groups.first { $0.title == "Calls and telephony" }!
+        let sms = OverrideServices.groups.first { $0.title == "SMS and messaging" }!
+        precondition(calls.labels.contains("com.apple.CommCenter-noncellular"))
+        precondition(DefaultPresets.builtinDefaults["com.apple.CommCenter-noncellular"] == true)
+        precondition(!calls.labels.contains("com.apple.imagent"), "SMS is managed in its own group")
+        precondition(sms.labels.contains("com.apple.imagent"))
         let policyLabel = "com.apple.managedconfiguration.profiled"
         let policy = OverrideServices.groups.first { $0.title == "Auto-Lock and configuration policy" }!
         precondition(policy.visibleLabels == [policyLabel])
         precondition(policy.actionLabels(enable: true) == [policyLabel])
         precondition(policy.actionLabels(enable: false) == [policyLabel], "Manual policy Off must remain available")
-        precondition(DefaultPresets.builtinDefaults[policyLabel] == false)
+        precondition(DefaultPresets.builtinDefaults[policyLabel] == true)
         precondition(SafetyManager.recommendation(for: policyLabel) != nil)
         precondition(SafetyManager.recommendation(for: "managedconfiguration.profiled") != nil)
         precondition(!SafetyManager.isCritical(policyLabel) && !SafetyManager.requiresWarning(policyLabel))
@@ -141,7 +161,11 @@ struct FeatureGroupsTests {
             precondition(group.labels.allSatisfy { !SafetyManager.isCritical($0) }, "Critical jobs belong only to prerequisite policy, not grouped feature membership")
             precondition(Set(group.visibleLabels).count == group.visibleLabels.count)
         }
-        for title in ["Bluetooth helpers", "Calls and SMS", "Wi-Fi", "Keyboard", "Safari services", "Location", "Siri"] {
+        for title in [
+            "Bluetooth helpers", "Calls and telephony", "SMS and messaging", "Wi-Fi", "Keyboard",
+            "Safari services", "Location", "Siri", "Apple Cloud Security and Recovery",
+            "Background Sync and Data Caches", "Reset and Hardware Maintenance"
+        ] {
             let feature = OverrideServices.groups.first { $0.title == title }!
             precondition(Set(feature.actionLabels(enable: false)) == Set(feature.labels), "Explicit feature Off must include every feature job")
             precondition(!feature.actionLabels(enable: false).contains("com.openssh.sshd"))
@@ -189,12 +213,16 @@ struct FeatureGroupsTests {
         precondition(photos.actionLabels(enable: true).contains("com.apple.photos.ImageConversionService"))
         precondition(photos.actionLabels(enable: false).contains("com.apple.photos.ImageConversionService"))
         precondition(photos.actionLabels(enable: true).contains("com.apple.photos.VideoConversionService"))
+        precondition(DefaultPresets.builtinDefaults["com.apple.photos.ImageConversionService"] == false)
+        precondition(DefaultPresets.builtinDefaults["com.apple.photos.VideoConversionService"] == false)
         precondition(Set(photos.actionLabels(enable: false)) == Set(photos.labels), "Export opt-out must stop both conversion jobs")
         let wallet = OverrideServices.groups.first { $0.title == "Wallet" }!
         precondition(Set(wallet.actionLabels(enable: false)) == Set(wallet.labels), "Wallet opt-out also stops its shared PassKit backend")
         let store = OverrideServices.groups.first { $0.title == "App Store and media purchases" }!
         precondition(store.actionLabels(enable: true).contains("com.apple.passd"))
         precondition(!store.actionLabels(enable: false).contains("com.apple.passd"))
+        precondition(DefaultPresets.builtinDefaults["com.apple.passd"] == true)
+        precondition(DefaultPresets.builtinDefaults["com.apple.storekitd"] == true)
         for title in ["Apple Account and settings sync", "iCloud Drive", "iCloud Photos"] {
             let cloud = OverrideServices.groups.first { $0.title == title }!
             precondition(cloud.actionLabels(enable: true).contains("com.apple.protectedcloudstorage.protectedcloudkeysyncing"))

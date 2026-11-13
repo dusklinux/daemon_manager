@@ -4,6 +4,20 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
+# Services in SafetyManager.recommendedEnabled that default to Off (true / yes)
+# for baseline RAM reclamation and are restored on-demand by their feature groups.
+RECOMMENDED_DEFAULT_OFF = {
+    'com.apple.SecureBackupDaemon',
+    'com.apple.adid',
+    'com.apple.cdpd',
+    'com.apple.contextstored',
+    'com.apple.followupd',
+    'com.apple.managedconfiguration.profiled',
+    'com.apple.passd',
+    'com.apple.protectedcloudstorage.protectedcloudkeysyncing',
+    'com.apple.syncdefaultsd',
+}
+
 
 class PresetTests(unittest.TestCase):
     def test_description_dictionary_has_no_duplicate_keys(self):
@@ -38,9 +52,10 @@ class PresetTests(unittest.TestCase):
                 self.assertEqual(raw_actions[label], 'NO')
         self.assertEqual({label for label, action in raw_actions.items() if action == 'NO'},
                          set(labels) & set(builtin), 'Config and Critical UI must agree in both directions')
-        for label in ('searchd', 'biomed', 'syncdefaultsd', 'mobile.lockdown',
+        for label in ('searchd', 'biomed', 'mobile.lockdown',
                       'imagent', 'identityservicesd', 'nehelper', 'nehelper-embedded', 'pluginkit.pkd'):
             self.assertIs(builtin['com.apple.' + label], False)
+        self.assertIs(builtin['com.apple.syncdefaultsd'], True)
 
     def test_recommendations_are_enabled_and_separate_from_critical(self):
         source = (ROOT / 'DaemonApp/DefaultPresets.swift').read_text()
@@ -68,10 +83,12 @@ class PresetTests(unittest.TestCase):
             key = 'com.apple.' + label
             self.assertIn(key, recommended)
             self.assertNotIn(key, critical)
-            self.assertEqual(builtin[key], 'false', 'Reclassification must keep normal functionality On')
+            expected = 'true' if key in RECOMMENDED_DEFAULT_OFF else 'false'
+            self.assertEqual(builtin[key], expected, f'Unexpected default for {key}')
         for key in recommended:
             if key in builtin:
-                self.assertEqual(builtin[key], 'false')
+                expected = 'true' if key in RECOMMENDED_DEFAULT_OFF else 'false'
+                self.assertEqual(builtin[key], expected, f'Unexpected default for {key}')
         self.assertNotIn('com.apple.AccessibilityUIServer', recommended | critical)
 
     def test_optional_media_and_wallpaper_hosts_default_off(self):
@@ -79,3 +96,7 @@ class PresetTests(unittest.TestCase):
         builtin = source.split('static let builtinDefaults: [String: Bool] = [', 1)[1].split('\n    ]', 1)[0]
         for label in ('PosterBoard', 'PaperBoard', 'liveactivitiesd'):
             self.assertIn(f'"com.apple.{label}": true', builtin)
+
+
+if __name__ == '__main__':
+    unittest.main()
