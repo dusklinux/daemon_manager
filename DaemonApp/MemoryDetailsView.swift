@@ -82,16 +82,105 @@ struct MemoryDetailsView: View {
                         memoryRow("Free + speculative", memory.freeAndSpeculativeMiB)
                         memoryRow("Compressed", memory.compressorMiB)
                     }
-                    Section("Compression") {
+                    Section("Compression (live snapshot)") {
+                        memoryRow("Compressed RAM used", memory.compressorMiB)
                         memoryRow("Contents before compression", memory.uncompressedInCompressorMiB)
+                        memoryRow("RAM saved by compression", memory.compressorSpaceSavedMiB)
                         if let ratio = memory.compressionRatio {
                             HStack {
-                                Text("Compression ratio")
+                                Text("Live compression ratio")
                                 Spacer()
                                 Text(String(format: "%.2f×", ratio)).monospacedDigit().foregroundColor(.secondary)
                             }
                         }
-                        Text("Compressed is the RAM used by the compressor. The second value is the original size of its stored pages.")
+                        Text("Compressed RAM used is the physical memory currently occupied by the compressor pool. Contents before compression is the original size of the pages currently stored inside it.")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Section("Lifetime compressor activity") {
+                        lifetimeBytesAndEventsRow(
+                            "Lifetime compressions",
+                            bytes: memory.lifetimeCompressedBytes,
+                            events: memory.lifetimeCompressions
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Lifetime decompressions",
+                            bytes: memory.lifetimeDecompressedBytes,
+                            events: memory.lifetimeDecompressions
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Unreturned (held or freed)",
+                            bytes: memory.lifetimeNetCompressedBytes,
+                            events: memory.lifetimeNetCompressedPages
+                        )
+                        if let faultReturnRatio = memory.lifetimeDecompressionRatio {
+                            HStack {
+                                Text("Fault return ratio")
+                                Spacer()
+                                Text(String(format: "%.2f%%", faultReturnRatio))
+                                    .monospacedDigit().foregroundColor(.secondary)
+                            }
+                        }
+                        lifetimeBytesAndEventsRow(
+                            "Compressor swap-ins",
+                            bytes: memory.lifetimeSwapinBytes,
+                            events: memory.lifetimeSwapins
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Compressor swap-outs",
+                            bytes: memory.lifetimeSwapoutBytes,
+                            events: memory.lifetimeSwapouts
+                        )
+                        Text("Percentage of compressed pages actively faulted back into RAM across total device uptime. Lower values (<25%) indicate dormant background pages; higher values indicate frequent app switching and active working set reclamation.")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Section("Lifetime VM & paging activity") {
+                        lifetimeCountOnlyRow("Total page faults", count: memory.lifetimeFaults)
+                        if let cowRatio = memory.lifetimeCowFaultRatio {
+                            HStack {
+                                Text("Copy-on-write faults")
+                                Spacer()
+                                Text("\(MemorySnapshot.formattedEventCount(memory.lifetimeCowFaults)) (\(String(format: "%.2f%%", cowRatio)))")
+                                    .monospacedDigit().foregroundColor(.secondary)
+                            }
+                        } else {
+                            lifetimeCountOnlyRow("Copy-on-write faults", count: memory.lifetimeCowFaults)
+                        }
+                        lifetimeBytesAndEventsRow(
+                            "Zero-filled pages",
+                            bytes: memory.lifetimeZeroFilledBytes,
+                            events: memory.lifetimeZeroFills
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Reactivated pages",
+                            bytes: memory.lifetimeReactivatedBytes,
+                            events: memory.lifetimeReactivations
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Page-ins",
+                            bytes: memory.lifetimePageinBytes,
+                            events: memory.lifetimePageins
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Page-outs",
+                            bytes: memory.lifetimePageoutBytes,
+                            events: memory.lifetimePageouts
+                        )
+                        lifetimeBytesAndEventsRow(
+                            "Purged pages",
+                            bytes: memory.lifetimePurgedBytes,
+                            events: memory.lifetimePurges
+                        )
+                        if let hitRatio = memory.lifetimeObjectCacheHitRatio {
+                            HStack {
+                                Text("VM object cache hits")
+                                Spacer()
+                                Text("\(MemorySnapshot.formattedEventCount(memory.lifetimeHits)) (\(String(format: "%.2f%%", hitRatio)))")
+                                    .monospacedDigit().foregroundColor(.secondary)
+                            }
+                        } else {
+                            lifetimeCountOnlyRow("VM object cache lookups", count: memory.lifetimeLookups)
+                        }
+                        Text("Cumulative virtual memory activity since boot (\(memory.pageSizeBytes / 1024) KiB hardware page size). Reactivations occur when inactive pages are referenced before reclamation.")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     Section("Memory categories") {
@@ -103,6 +192,9 @@ struct MemoryDetailsView: View {
                         memoryRow("Purgeable", memory.purgeableMiB)
                         memoryRow("File-backed", memory.fileBackedMiB)
                         memoryRow("Anonymous", memory.anonymousMiB)
+                        if memory.throttledMiB > 0 {
+                            memoryRow("Throttled", memory.throttledMiB)
+                        }
                         Text("Speculative pages cache reclaimable data and are included in Free + speculative. Other categories overlap; do not add these values together. RAM values refresh every two seconds while the app is active. Pressure changes update when iOS reports them.")
                             .font(.caption).foregroundColor(.secondary)
                         Text("Updated \(memory.sampledAt.formatted(date: .omitted, time: .standard))")
@@ -153,7 +245,25 @@ struct MemoryDetailsView: View {
         HStack {
             Text(title)
             Spacer()
-            Text(String(format: "%.1f MiB", value))
+            Text(MemorySnapshot.formattedDynamicMiB(value))
+                .monospacedDigit().foregroundColor(.secondary)
+        }
+    }
+
+    private func lifetimeBytesAndEventsRow(_ title: String, bytes: UInt64, events: UInt64) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text("\(MemorySnapshot.formattedDynamicBytes(bytes)) (\(MemorySnapshot.formattedEventCount(events)))")
+                .monospacedDigit().foregroundColor(.secondary)
+        }
+    }
+
+    private func lifetimeCountOnlyRow(_ title: String, count: UInt64) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(MemorySnapshot.formattedEventCount(count))
                 .monospacedDigit().foregroundColor(.secondary)
         }
     }
