@@ -82,8 +82,8 @@ jobs:
       - name: Create or Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.38
+          tag_name: v2.0
           target_commitish: ${{ github.sha }}
-          name: "Daemon Manager v1.0.38"
-          body: "Siri voice downloads restore Trial; service multiselection; Apply Now, Restart Userspace and one Dismiss; optional Duskie 2 GiB worker control; expanded accessibility, Speak Screen, CarPlay, Handoff and accessory groups. Accessibility UI defaults Off; Background Sounds stays On. Source commit: ${{ github.sha }}."
+          name: "Daemon Manager v2.0"
+          body: "Daemon Manager 2.0: Modular feature groups with dedicated SMS/messaging isolation; RAM reclamation defaults; full Darwin XNU vm_statistics64 lifetime compressor & paging telemetry (compressed/decompressed volumes, 77.47% fault return ratio, dynamic MiB/GiB/TiB/PiB unit scaling). Source commit: ${{ github.sha }}."
           files: DaemonApp.ipa
