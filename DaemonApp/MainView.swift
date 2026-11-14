@@ -198,7 +198,7 @@ struct LiveServicesView: View {
         VStack(spacing: 0) {
             // Search Bar & Filter
             VStack(spacing: 8) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                         TextField(criticalOnly ? "Search critical services..." : "Search daemons...", text: $searchText)
@@ -213,6 +213,17 @@ struct LiveServicesView: View {
                     .padding(8)
                     .background(Color(UIColor.tertiarySystemBackground))
                     .cornerRadius(10)
+
+                    Button {
+                        selecting.toggle()
+                        if !selecting { selected.removeAll() }
+                    } label: {
+                        Image(systemName: selecting ? "checkmark.circle.fill" : "checklist")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(selecting ? .accentColor : .primary)
+                    }
+                    .accessibilityLabel(selecting ? "Finish selection" : "Select services")
+
                     Button { showMemoryDetails = true } label: {
                         Text(model.ramUsageText.components(separatedBy: " ").first ?? "—")
                             .font(.system(.subheadline, design: .monospaced, weight: .bold))
@@ -220,6 +231,7 @@ struct LiveServicesView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Available memory in MiB, \(model.ramUsageText)")
+
                     Button { model.isDarkTheme.toggle() } label: {
                         Image(systemName: model.isDarkTheme ? "sun.max.fill" : "moon.fill")
                             .foregroundColor(.primary)
@@ -227,18 +239,15 @@ struct LiveServicesView: View {
                     .accessibilityLabel("Switch theme")
                 }
 
-                HStack {
-                    Button(selecting ? "Done" : "Select") {
-                        selecting.toggle()
-                        if !selecting { selected.removeAll() }
-                    }
-                    if selecting {
+                if selecting {
+                    HStack {
                         Button("Select Visible") { selected.formUnion(filteredServices.map(\.id)) }
                         Button("Clear") { selected.removeAll() }
                         Spacer()
                         Text("\(selected.count) selected").font(.caption)
                     }
-                }.font(.subheadline)
+                    .font(.subheadline)
+                }
 
                 Picker("Filter", selection: $filter) {
                     ForEach(FilterType.allCases, id: \.self) { f in

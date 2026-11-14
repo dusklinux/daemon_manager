@@ -198,8 +198,7 @@ enum OverrideServices {
                 "com.apple.CommCenterRootHelper",
                 "com.apple.telephonyutilities.callservicesd",
                 "com.apple.voicemail.vmd",
-                "com.apple.avconferenced",
-                "com.apple.CommCenter-noncellular"
+                "com.apple.avconferenced"
             ],
             dependencies: [
                 "com.apple.cmfsyncagent",
@@ -210,7 +209,7 @@ enum OverrideServices {
                 "com.apple.akd",
                 "com.apple.WirelessRadioManager"
             ],
-            note: "Controls cellular call helpers, CallKit/VoIP (callservicesd), voicemail (vmd), AVConference and non-cellular telephony coordination (CommCenter-noncellular, which defaults Off in daemon.cfg). Carrier SMS and iMessage are independently managed under 'SMS and messaging'. Shared services: avconferenced is a shared prerequisite for 'Messages and FaceTime' (disabling this group turns avconferenced Off); cmfsyncagent, CommCenter, nehelper, apsd, accountsd and akd are shared prerequisites with 'SMS and messaging', 'Messages and FaceTime' and 'Apple Account and settings sync' and stay enabled on group Off; WirelessRadioManager is shared with 'Bluetooth helpers' and 'Wi-Fi'. Restart userspace after changes."
+            note: "Controls cellular call helpers, CallKit/VoIP (callservicesd), voicemail (vmd) and AVConference. Carrier SMS and iMessage are independently managed under 'SMS and messaging'. Shared services: avconferenced is a shared prerequisite for 'Messages and FaceTime' (disabling this group turns avconferenced Off); cmfsyncagent, CommCenter, nehelper, apsd, accountsd and akd are shared prerequisites with 'SMS and messaging', 'Messages and FaceTime' and 'Apple Account and settings sync' and stay enabled on group Off; WirelessRadioManager is shared with 'Bluetooth helpers' and 'Wi-Fi'. Restart userspace after changes."
         ),
         OverrideGroup(
             title: "CarPlay",

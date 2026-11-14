@@ -111,7 +111,7 @@ struct FeatureGroupsTests {
         precondition(!SafetyManager.isCritical("com.apple.CommCenter"))
         let calls = OverrideServices.groups.first { $0.title == "Calls and telephony" }!
         let sms = OverrideServices.groups.first { $0.title == "SMS and messaging" }!
-        precondition(calls.labels.contains("com.apple.CommCenter-noncellular"))
+        precondition(!calls.labels.contains("com.apple.CommCenter-noncellular"))
         precondition(DefaultPresets.builtinDefaults["com.apple.CommCenter-noncellular"] == true)
         precondition(!calls.labels.contains("com.apple.imagent"), "SMS is managed in its own group")
         precondition(sms.labels.contains("com.apple.imagent"))
