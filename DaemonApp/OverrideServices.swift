@@ -137,7 +137,6 @@ enum OverrideServices {
                 "com.apple.companion_proxy",
                 "com.apple.companionauthd",
                 "com.apple.nanobackupd",
-                "com.apple.nanoprefsyncd",
                 "com.apple.nanoprefsyncd.2",
                 "com.apple.nanoregistrylaunchd",
                 "com.apple.nanotimekitcompaniond",
